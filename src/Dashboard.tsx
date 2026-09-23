@@ -1,16 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
+import DeviceDetail from "./DeviceDetail";
 import { api, ok } from "./lib/api";
 import { authClient } from "./lib/auth-client";
+import { isOnline, statusLabel, type Device } from "./lib/device";
 
-type Device = { id: string; name: string; agentVersion: string | null; createdAt: string; lastSeenAt: string | null };
 type PairingCode = { code: string; expiresAt: string };
 
-const ONLINE_THRESHOLD_MS = 60_000;
+const DEVICE_HASH = /^#\/pc\/([0-9a-f-]{36})$/;
+
+function useSelectedDevice() {
+  const read = () => DEVICE_HASH.exec(location.hash)?.[1] ?? null;
+  const [id, setId] = useState(read);
+  useEffect(() => {
+    const onChange = () => setId(read());
+    addEventListener("hashchange", onChange);
+    return () => removeEventListener("hashchange", onChange);
+  }, []);
+  return id;
+}
 
 export default function Dashboard({ email }: { email: string }) {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const selectedId = useSelectedDevice();
+  const selected = devices?.find((d) => d.id === selectedId);
 
   const load = useCallback(async () => {
     try {
@@ -50,53 +64,59 @@ export default function Dashboard({ email }: { email: string }) {
   return (
     <main className="page">
       <header>
-        <strong>CtrlAltBro</strong>
-        <span>
+        <a className="logo" href="#">
+          <kbd>Ctrl</kbd>
+          <kbd>Alt</kbd>
+          <kbd className="accent">Bro</kbd>
+        </a>
+        <span className="muted">
           {email} · <button className="link" onClick={() => authClient.signOut()}>Se déconnecter</button>
         </span>
       </header>
 
-      <section>
-        <div className="row">
-          <h1>Mes PC</h1>
-          <button onClick={addDevice}>Ajouter un PC</button>
-        </div>
+      {selected ? (
+        <DeviceDetail key={selected.id} device={selected} onBack={() => (location.hash = "")} />
+      ) : selectedId && devices === null ? (
+        <p className="muted">Chargement…</p>
+      ) : (
+        <section>
+          <div className="row">
+            <h1>Mes PC</h1>
+            <button onClick={addDevice}>Ajouter un PC</button>
+          </div>
 
-        {pairing && (
-          <p className="notice">
-            Code d'appairage à saisir dans l'agent : <code>{pairing.code}</code> — valable jusqu'à{" "}
-            {new Date(pairing.expiresAt).toLocaleTimeString()}.
-          </p>
-        )}
-        {error && <p className="error">{error}</p>}
+          {pairing && (
+            <p className="notice">
+              Code d'appairage à saisir dans l'agent : <code className="code">{pairing.code}</code> valable jusqu'à{" "}
+              {new Date(pairing.expiresAt).toLocaleTimeString()}.
+            </p>
+          )}
+          {error && <p className="error">{error}</p>}
 
-        {devices === null ? (
-          <p>Chargement…</p>
-        ) : devices.length === 0 ? (
-          <p>Aucun PC pour l'instant. Clique sur « Ajouter un PC » puis saisis le code dans l'agent.</p>
-        ) : (
-          <ul className="devices">
-            {devices.map((d) => (
-              <li key={d.id}>
-                <div>
-                  <strong>{d.name}</strong>
-                  <small>{status(d)}</small>
-                </div>
-                <button className="link" onClick={() => removeDevice(d)}>
-                  Supprimer
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          {devices === null ? (
+            <p className="muted">Chargement…</p>
+          ) : devices.length === 0 ? (
+            <p className="muted">Aucun PC pour l'instant. Clique sur « Ajouter un PC » puis saisis le code dans l'agent.</p>
+          ) : (
+            <ul className="devices">
+              {devices.map((d) => (
+                <li key={d.id}>
+                  <a href={`#/pc/${d.id}`}>
+                    <span className={`dot ${isOnline(d) ? "on" : ""}`} />
+                    <span>
+                      <strong>{d.name}</strong>
+                      <small>{statusLabel(d)}</small>
+                    </span>
+                  </a>
+                  <button className="link" onClick={() => removeDevice(d)}>
+                    Supprimer
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </main>
   );
-}
-
-function status(d: Device) {
-  if (!d.lastSeenAt) return "jamais connecté";
-  const last = new Date(d.lastSeenAt);
-  if (Date.now() - last.getTime() < ONLINE_THRESHOLD_MS) return "en ligne";
-  return `vu le ${last.toLocaleString()}`;
 }
