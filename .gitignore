@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+*.tsbuildinfo
+
+# Secrets
+.env*
+!.env.example
+.dev.vars*
+.neon
+.DS_Store
