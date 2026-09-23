@@ -42,3 +42,48 @@ button {
   cursor: pointer;
   padding: 0;
 }
+
+.page {
+  width: 100%;
+  max-width: 720px;
+  align-self: start;
+}
+
+.page header,
+.row,
+.devices li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.page header {
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.page header .link,
+.devices .link {
+  margin: 0;
+}
+
+.notice code {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.devices {
+  list-style: none;
+  padding: 0;
+}
+
+.devices li {
+  padding: 10px 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.devices small {
+  display: block;
+  opacity: 0.7;
+}

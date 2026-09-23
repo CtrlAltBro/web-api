@@ -9,3 +9,4 @@ dist/
 .dev.vars*
 .neon
 .DS_Store
+.fake-agent.json

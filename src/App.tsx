@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import Dashboard from "./Dashboard";
 import { authClient } from "./lib/auth-client";
 
 export default function App() {
@@ -7,13 +8,7 @@ export default function App() {
   if (isPending) return <main className="card">Chargement…</main>;
   if (!session) return <AuthForm />;
 
-  return (
-    <main className="card">
-      <h1>CtrlAltBro</h1>
-      <p>Connecté en tant que {session.user.email}</p>
-      <button onClick={() => authClient.signOut()}>Se déconnecter</button>
-    </main>
-  );
+  return <Dashboard email={session.user.email} />;
 }
 
 function AuthForm() {

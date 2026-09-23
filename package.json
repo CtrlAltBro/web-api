@@ -12,11 +12,13 @@
     "db:migrate": "node --env-file-if-exists=.env.local db/migrate.mjs"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.9.1",
     "better-auth": "^1.7.5",
     "hono": "^4.13.8",
     "pg": "^8.23.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.57.3",

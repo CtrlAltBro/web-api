@@ -1,35 +1,38 @@
 import { Hono } from "hono";
-import type { Pool } from "pg";
-import { createAuth, type Auth } from "./auth";
+import { HTTPException } from "hono/http-exception";
+import { createAuth } from "./auth";
+import { requireUser, type AppEnv } from "./context";
 import { createPool } from "./db";
+import { agentRoutes } from "./routes/agent";
+import { deviceRoutes } from "./routes/devices";
 
-type AppEnv = {
-  Bindings: Env;
-  Variables: { db: Pool; auth: Auth };
-};
+const app = new Hono<AppEnv>()
+  .basePath("/api")
 
-const app = new Hono<AppEnv>().basePath("/api");
+  .use(async (c, next) => {
+    const db = createPool(c.env);
+    c.set("db", db);
+    c.set("auth", createAuth(c.env, db));
+    await next();
+    c.executionCtx.waitUntil(db.end());
+  })
 
-app.use("*", async (c, next) => {
-  const db = createPool(c.env);
-  c.set("db", db);
-  c.set("auth", createAuth(c.env, db));
-  await next();
-  c.executionCtx.waitUntil(db.end());
-});
+  .on(["GET", "POST"], "/auth/*", (c) => c.var.auth.handler(c.req.raw))
 
-// Better Auth: sign-up, sign-in, sign-out, session… under /api/auth/*
-app.on(["GET", "POST"], "/auth/*", (c) => c.get("auth").handler(c.req.raw));
+  .get("/health", async (c) => {
+    await c.var.db.query("select 1");
+    return c.json({ ok: true });
+  })
 
-app.get("/health", async (c) => {
-  await c.get("db").query("select 1");
-  return c.json({ ok: true });
-});
+  .get("/me", requireUser, (c) => c.json({ user: c.var.user }))
 
-app.get("/me", async (c) => {
-  const session = await c.get("auth").api.getSession({ headers: c.req.raw.headers });
-  if (!session) return c.json({ error: "unauthorized" }, 401);
-  return c.json({ user: session.user });
+  .route("/agent/v1", agentRoutes)
+  .route("/v1", deviceRoutes);
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
+  console.error(err);
+  return c.json({ error: "internal error" }, 500);
 });
 
 export type AppType = typeof app;
