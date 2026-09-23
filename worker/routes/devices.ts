@@ -102,7 +102,24 @@ export const deviceRoutes = new Hono<AppEnv>()
         order by 1, 4 desc`,
       [id, from, to, tz],
     );
-    return c.json({ usage: rows });
+    // Top window titles (e.g. video or document names) per day and app.
+    const { rows: titles } = await c.var.db.query<{ day: string; app: string; title: string; seconds: number }>(
+      `select day, app, title, seconds
+         from (select to_char(started_at at time zone $4, 'YYYY-MM-DD') as day,
+                      app_name as app, window_title as title,
+                      sum(duration_seconds)::int as seconds,
+                      row_number() over (
+                        partition by to_char(started_at at time zone $4, 'YYYY-MM-DD'), app_name
+                        order by sum(duration_seconds) desc
+                      ) as rank
+                 from screen_time_sessions
+                where device_id = $1 and started_at >= $2 and started_at < $3 and window_title <> ''
+                group by 1, 2, 3) t
+        where rank <= 5
+        order by day, app, seconds desc`,
+      [id, from, to, tz],
+    );
+    return c.json({ usage: rows, titles });
   })
 
   .get("/devices/:id/history", zValidator("param", deviceIdParam), zValidator("query", historyQuery), async (c) => {
