@@ -6,6 +6,8 @@ type Title = { day: string; app: string; title: string; seconds: number };
 type Tip = { x: number; y: number; text: string } | null;
 
 const DAYS = 7;
+// Same pace as the agent in fast mode (it streams while this page is open).
+export const REFRESH_MS = 15_000;
 const TOP_APPS = 8;
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -58,7 +60,7 @@ export default function ScreenTime({ deviceId }: { deviceId: string }) {
 
   useEffect(() => {
     load();
-    const timer = setInterval(load, 60_000);
+    const timer = setInterval(load, REFRESH_MS);
     return () => clearInterval(timer);
   }, [load]);
 

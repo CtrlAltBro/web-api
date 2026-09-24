@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { requireUser, transaction, type AppEnv } from "../context";
 import { newPairingCode, normalizePairingCode, sha256 } from "../lib/tokens";
+import { isProtectedExe } from "../lib/protected";
 import { bumpRev, isOnlineInKv, markViewing } from "../lib/signals";
 import { commandInput, deviceIdParam, historyQuery, ruleInput, screenTimeQuery } from "../schemas";
 
@@ -184,6 +185,9 @@ export const deviceRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     const rule = c.req.valid("json");
     await assertOwnDevice(c.var.db, c.var.user.id, id);
+    if (rule.type === "app" && isProtectedExe(rule.target)) {
+      throw new HTTPException(400, { message: `${rule.target} est un programme système, il ne peut pas être bloqué ni limité` });
+    }
 
     const saved = await transaction(c.var.db, async (tx) => {
       const { rows } = await tx.query<{ id: string }>(
