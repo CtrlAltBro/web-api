@@ -22,8 +22,19 @@ export type PairResponse = { deviceId: string; token: string };
 
 const isoDate = z.iso.datetime({ offset: true });
 
+const timeZone = z.string().refine((tz) => {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}, "unknown time zone");
+
 export const syncInput = z.object({
   agentVersion: z.string().max(50).optional(),
+  // IANA zone of the PC, so "today" for daily limits starts at the child's midnight.
+  timeZone: timeZone.optional(),
   rulesVersion: z.number().int(),
   apps: z
     .array(
@@ -76,11 +87,21 @@ export const syncInput = z.object({
 
 export type SyncInput = z.infer<typeof syncInput>;
 
-export type AppRule = { exeName: string; mode: "block" | "limit"; dailyLimitMinutes: number | null };
+export type AppRule = {
+  exeName: string;
+  mode: "block" | "limit";
+  dailyLimitMinutes: number | null;
+  // What the API knows of today's usage (since midnight or the latest reset), so the
+  // agent's counter catches up after a reinstall or a limit added mid-day.
+  usedTodaySeconds?: number;
+  // Latest reset of today by the parent: the agent drops its own counter to usedTodaySeconds.
+  usageResetAt?: string | null;
+};
 export type SiteRule = { pattern: string };
 
 export type SyncResponse = {
-  rules: { version: number; apps: AppRule[]; sites: SiteRule[] } | null;
+  // day: the PC's local date the usage above belongs to (YYYY-MM-DD).
+  rules: { version: number; apps: AppRule[]; sites: SiteRule[]; day?: string } | null;
   commands: { id: string; type: string; payload: unknown }[];
   nextSyncSeconds: number;
 };
@@ -115,20 +136,15 @@ export const commandInput = z.discriminatedUnion("type", [
   z.object({ type: z.literal("show_message"), payload: z.object({ text: z.string().trim().min(1).max(500) }) }),
 ]);
 
-const timeZone = z.string().refine((tz) => {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}, "unknown time zone");
-
 export const screenTimeQuery = z.object({
   from: isoDate,
   to: isoDate,
   tz: timeZone.default("UTC"),
 });
+
+export const rulesQuery = z.object({ tz: timeZone.default("UTC") });
+
+export const usageResetInput = z.object({ exeName: exeName.optional() });
 
 export const historyQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),

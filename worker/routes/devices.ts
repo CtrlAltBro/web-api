@@ -7,7 +7,16 @@ import { requireUser, transaction, type AppEnv } from "../context";
 import { newPairingCode, normalizePairingCode, sha256 } from "../lib/tokens";
 import { isProtectedExe } from "../lib/protected";
 import { bumpRev, isOnlineInKv, markViewing } from "../lib/signals";
-import { commandInput, deviceIdParam, historyQuery, ruleInput, screenTimeQuery } from "../schemas";
+import { ruleUsage } from "../lib/usage";
+import {
+  commandInput,
+  deviceIdParam,
+  historyQuery,
+  ruleInput,
+  rulesQuery,
+  screenTimeQuery,
+  usageResetInput,
+} from "../schemas";
 
 const PAIRING_CODE_TTL_MINUTES = 15;
 
@@ -162,9 +171,15 @@ export const deviceRoutes = new Hono<AppEnv>()
   })
 
 
-  .get("/devices/:id/rules", zValidator("param", deviceIdParam), async (c) => {
+  .get("/devices/:id/rules", zValidator("param", deviceIdParam), zValidator("query", rulesQuery), async (c) => {
     const { id } = c.req.valid("param");
     await assertOwnDevice(c.var.db, c.var.user.id, id);
+    // Today = the PC's day when it has reported its time zone, else the parent's.
+    const { rows: tzRows } = await c.var.db.query<{ tz: string | null }>(
+      `select time_zone as tz from devices where id = $1`,
+      [id],
+    );
+    const { usage } = await ruleUsage(c.var.db, id, tzRows[0]?.tz ?? c.req.valid("query").tz);
     const { rows } = await c.var.db.query<{
       id: string;
       type: "app" | "site";
@@ -178,7 +193,28 @@ export const deviceRoutes = new Hono<AppEnv>()
          from rules where device_id = $1 order by type, target`,
       [id],
     );
-    return c.json({ rules: rows });
+    const rules = rows.map((r) => ({
+      ...r,
+      usedTodaySeconds: usage.get(r.target)?.usedTodaySeconds ?? 0,
+      usageResetAt: usage.get(r.target)?.usageResetAt ?? null,
+    }));
+    return c.json({ rules });
+  })
+
+  // Give time back today: limits restart from zero for one app, or for every app.
+  // Screen time history is kept.
+  .post("/devices/:id/usage-resets", zValidator("param", deviceIdParam), zValidator("json", usageResetInput), async (c) => {
+    const { id } = c.req.valid("param");
+    const { exeName } = c.req.valid("json");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    await transaction(c.var.db, async (tx) => {
+      await tx.query(`insert into usage_resets (device_id, exe_name) values ($1, $2)`, [id, exeName ?? null]);
+      // Rules are re-sent to the agent with the reset, like any rule change.
+      await tx.query(`update devices set rules_version = rules_version + 1 where id = $1`, [id]);
+    });
+    c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
+    console.log(`[reset] ⏪ ${id.slice(0, 8)} compteur remis à zéro : ${exeName ?? "toutes les apps"}`);
+    return c.body(null, 204);
   })
 
   .put("/devices/:id/rules", zValidator("param", deviceIdParam), zValidator("json", ruleInput), async (c) => {

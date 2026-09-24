@@ -9,9 +9,10 @@ type Rule = {
   mode: "block" | "limit";
   dailyLimitMinutes: number | null;
   active: boolean;
+  // Today's usage since local midnight or the latest reset.
+  usedTodaySeconds: number;
 };
 type App = { exeName: string; name: string };
-type Usage = { exeName: string | null; seconds: number };
 
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -23,33 +24,16 @@ function toExeName(input: string, apps: App[]) {
   return value.endsWith(".exe") ? value : `${value}.exe`;
 }
 
-function todayRange() {
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
-  return { from: from.toISOString(), to: to.toISOString(), tz };
-}
-
 export default function Rules({ deviceId, apps }: { deviceId: string; apps: App[] }) {
   const [rules, setRules] = useState<Rule[] | null>(null);
-  const [usedToday, setUsedToday] = useState(new Map<string, number>());
   const [mode, setMode] = useState<"limit" | "block">("limit");
   const [error, setError] = useState<string | null>(null);
   const appNames = useMemo(() => new Map(apps.map((a) => [a.exeName, a.name])), [apps]);
 
   const load = useCallback(async () => {
     try {
-      const rulesRes = await ok(api.v1.devices[":id"].rules.$get({ param: { id: deviceId } }));
-      const usageRes = await ok(
-        api.v1.devices[":id"]["screen-time"].$get({ param: { id: deviceId }, query: todayRange() }),
-      );
-      setRules(((await rulesRes.json()) as { rules: Rule[] }).rules.filter((r) => r.type === "app"));
-      const used = new Map<string, number>();
-      for (const u of ((await usageRes.json()) as { usage: Usage[] }).usage) {
-        if (u.exeName) used.set(u.exeName, (used.get(u.exeName) ?? 0) + u.seconds);
-      }
-      setUsedToday(used);
+      const res = await ok(api.v1.devices[":id"].rules.$get({ param: { id: deviceId }, query: { tz } }));
+      setRules(((await res.json()) as { rules: Rule[] }).rules.filter((r) => r.type === "app"));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -98,6 +82,19 @@ export default function Rules({ deviceId, apps }: { deviceId: string; apps: App[
     }
   }
 
+  // exeName undefined = every app.
+  async function resetUsage(exeName?: string) {
+    const label = exeName ? `« ${appNames.get(exeName) ?? exeName} »` : "toutes les applications";
+    if (!confirm(`Remettre à zéro le temps d'aujourd'hui pour ${label} ?
+L'historique du temps d'écran est conservé.`)) return;
+    try {
+      await ok(api.v1.devices[":id"]["usage-resets"].$post({ param: { id: deviceId }, json: { exeName } }));
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   function changeLimit(rule: Rule, value: string) {
     const minutes = Number(value);
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440 || minutes === rule.dailyLimitMinutes) return;
@@ -106,7 +103,14 @@ export default function Rules({ deviceId, apps }: { deviceId: string; apps: App[
 
   return (
     <div className="panel rules">
-      <h2>Règles</h2>
+      <div className="panel-head">
+        <h2>Règles</h2>
+        {rules?.some((r) => r.mode === "limit") && (
+          <button className="link" onClick={() => resetUsage()}>
+            Tout remettre à zéro
+          </button>
+        )}
+      </div>
 
       <form className="rule-form" onSubmit={onAdd}>
         <input name="target" list={`apps-${deviceId}`} placeholder="Application (ex. Minecraft)" required />
@@ -138,7 +142,7 @@ export default function Rules({ deviceId, apps }: { deviceId: string; apps: App[
       ) : (
         <ul className="rule-list">
           {rules.map((rule) => {
-            const used = usedToday.get(rule.target) ?? 0;
+            const used = rule.usedTodaySeconds;
             const limit = (rule.dailyLimitMinutes ?? 0) * 60;
             const over = rule.mode === "limit" && used >= limit;
             return (
@@ -172,9 +176,16 @@ export default function Rules({ deviceId, apps }: { deviceId: string; apps: App[
                     </span>
                   </div>
                 )}
-                <button className="link" onClick={() => remove(rule)}>
-                  Supprimer
-                </button>
+                <div className="rule-actions">
+                  {rule.mode === "limit" && (
+                    <button className="link" onClick={() => resetUsage(rule.target)} title="Remettre à zéro le temps d'aujourd'hui">
+                      Remettre à zéro
+                    </button>
+                  )}
+                  <button className="link" onClick={() => remove(rule)}>
+                    Supprimer
+                  </button>
+                </div>
               </li>
             );
           })}

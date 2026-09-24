@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { HTTPException } from "hono/http-exception";
 import { requireDevice, transaction, type AppEnv } from "../context";
 import { newDeviceToken, normalizePairingCode, sha256 } from "../lib/tokens";
+import { ruleUsage } from "../lib/usage";
 import { cacheDeviceToken, deviceIdFromToken, getRev, isViewing, markOffline, touchSeen } from "../lib/signals";
 import { pairInput, syncInput, type AppRule, type PairResponse, type SiteRule, type SyncResponse } from "../schemas";
 
@@ -79,12 +80,13 @@ export const agentRoutes = new Hono<AppEnv>()
     const response = await transaction(
       c.var.db,
       async (tx) => {
-        const { rows } = await tx.query<{ rules_version: number }>(
-          `update devices set last_seen_at = now(), agent_version = coalesce($2, agent_version)
-            where id = $1 returning rules_version`,
-          [device.id, input.agentVersion ?? null],
+        const { rows } = await tx.query<{ rules_version: number; time_zone: string | null }>(
+          `update devices set last_seen_at = now(), agent_version = coalesce($2, agent_version),
+                  time_zone = coalesce($3, time_zone)
+            where id = $1 returning rules_version, time_zone`,
+          [device.id, input.agentVersion ?? null, input.timeZone ?? null],
         );
-        const rulesVersion = rows[0].rules_version;
+        const { rules_version: rulesVersion, time_zone: timeZone } = rows[0];
 
         if (input.apps) {
           const apps = dedupeBy(input.apps, (a) => a.exeName);
@@ -143,7 +145,8 @@ export const agentRoutes = new Hono<AppEnv>()
         );
 
         return {
-          rules: input.rulesVersion === rulesVersion ? null : await loadRules(tx, device.id, rulesVersion),
+          rules:
+            input.rulesVersion === rulesVersion ? null : await loadRules(tx, device.id, rulesVersion, timeZone ?? "UTC"),
           commands: commands.rows,
           nextSyncSeconds: NEXT_SYNC_SECONDS,
         } satisfies SyncResponse;
@@ -174,7 +177,7 @@ async function deviceIdCheap(c: Context<AppEnv>) {
   return rows[0].id;
 }
 
-async function loadRules(tx: PoolClient, deviceId: string, version: number) {
+async function loadRules(tx: PoolClient, deviceId: string, version: number, tz: string) {
   const { rows } = await tx.query<{
     type: "app" | "site";
     target: string;
@@ -184,13 +187,22 @@ async function loadRules(tx: PoolClient, deviceId: string, version: number) {
     deviceId,
   ]);
 
+  const { day, usage } = await ruleUsage(tx, deviceId, tz);
+
   const apps: AppRule[] = [];
   const sites: SiteRule[] = [];
   for (const r of rows) {
-    if (r.type === "app") apps.push({ exeName: r.target, mode: r.mode, dailyLimitMinutes: r.daily_limit_minutes });
-    else sites.push({ pattern: r.target });
+    if (r.type === "site") sites.push({ pattern: r.target });
+    else {
+      const { usedTodaySeconds, usageResetAt } = usage.get(r.target) ?? { usedTodaySeconds: 0, usageResetAt: null };
+      apps.push({ exeName: r.target, mode: r.mode, dailyLimitMinutes: r.daily_limit_minutes, usedTodaySeconds, usageResetAt });
+    }
   }
-  return { version, apps, sites };
+  if (usage.size) {
+    const summary = [...usage.values()].map((u) => `${u.exeName} ${Math.round(u.usedTodaySeconds / 60)} min`).join(", ");
+    console.log(`[sync] 📏 règles v${version} envoyées avec l'usage du jour (${day}) : ${summary}`);
+  }
+  return { version, apps, sites, ...(day && { day }) };
 }
 
 function dedupeBy<T>(items: T[], key: (item: T) => string) {
