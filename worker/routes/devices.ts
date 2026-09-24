@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { requireUser, transaction, type AppEnv } from "../context";
 import { newPairingCode, normalizePairingCode, sha256 } from "../lib/tokens";
+import { bumpRev, isOnlineInKv, markViewing } from "../lib/signals";
 import { commandInput, deviceIdParam, historyQuery, ruleInput, screenTimeQuery } from "../schemas";
 
 const PAIRING_CODE_TTL_MINUTES = 15;
@@ -32,7 +33,18 @@ export const deviceRoutes = new Hono<AppEnv>()
          from devices where user_id = $1 order by created_at`,
       [c.var.user.id],
     );
-    return c.json({ devices: rows });
+    // Live online status from KV (agent pings every 30 s) rather than the DB last_seen_at.
+    const online = await Promise.all(rows.map((d) => isOnlineInKv(c.env.SIGNALS, d.id)));
+    const devices = rows.map((d, i) => ({ ...d, online: online[i] }));
+    return c.json({ devices });
+  })
+
+  // The device page calls this while open so the agent switches to fast mode.
+  .post("/devices/:id/heartbeat", zValidator("param", deviceIdParam), async (c) => {
+    const { id } = c.req.valid("param");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    await markViewing(c.env.SIGNALS, id);
+    return c.body(null, 204);
   })
 
   .post("/pairing-codes", async (c) => {
@@ -102,7 +114,24 @@ export const deviceRoutes = new Hono<AppEnv>()
         order by 1, 4 desc`,
       [id, from, to, tz],
     );
-    return c.json({ usage: rows });
+    // Top window titles (e.g. video or document names) per day and app.
+    const { rows: titles } = await c.var.db.query<{ day: string; app: string; title: string; seconds: number }>(
+      `select day, app, title, seconds
+         from (select to_char(started_at at time zone $4, 'YYYY-MM-DD') as day,
+                      app_name as app, window_title as title,
+                      sum(duration_seconds)::int as seconds,
+                      row_number() over (
+                        partition by to_char(started_at at time zone $4, 'YYYY-MM-DD'), app_name
+                        order by sum(duration_seconds) desc
+                      ) as rank
+                 from screen_time_sessions
+                where device_id = $1 and started_at >= $2 and started_at < $3 and window_title <> ''
+                group by 1, 2, 3) t
+        where rank <= 5
+        order by day, app, seconds desc`,
+      [id, from, to, tz],
+    );
+    return c.json({ usage: rows, titles });
   })
 
   .get("/devices/:id/history", zValidator("param", deviceIdParam), zValidator("query", historyQuery), async (c) => {
@@ -169,6 +198,7 @@ export const deviceRoutes = new Hono<AppEnv>()
       await tx.query(`update devices set rules_version = rules_version + 1 where id = $1`, [id]);
       return rows[0];
     });
+    c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
     return c.json({ id: saved.id });
   })
 
@@ -180,6 +210,7 @@ export const deviceRoutes = new Hono<AppEnv>()
       if (rowCount) await tx.query(`update devices set rules_version = rules_version + 1 where id = $1`, [id]);
       return rowCount;
     });
+    if (deleted) c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
     if (!deleted) throw new HTTPException(404, { message: "rule not found" });
     return c.body(null, 204);
   })
@@ -212,5 +243,7 @@ export const deviceRoutes = new Hono<AppEnv>()
       `insert into commands (device_id, type, payload) values ($1, $2, $3) returning id`,
       [id, command.type, "payload" in command ? JSON.stringify(command.payload) : null],
     );
+    // Wake the agent: it will sync within a ping instead of a full interval.
+    c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
     return c.json({ id: rows[0].id }, 201);
   });

@@ -1,14 +1,23 @@
-export type Device = { id: string; name: string; agentVersion: string | null; createdAt: string; lastSeenAt: string | null };
+export type Device = {
+  id: string;
+  name: string;
+  agentVersion: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  // Live status from KV (the list route sets it); undefined on routes that don't.
+  online?: boolean;
+};
 
 const ONLINE_THRESHOLD_MS = 60_000;
 
 export function isOnline(d: Device) {
+  if (typeof d.online === "boolean") return d.online;
   return !!d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < ONLINE_THRESHOLD_MS;
 }
 
 export function statusLabel(d: Device) {
-  if (!d.lastSeenAt) return "jamais connecté";
   if (isOnline(d)) return "en ligne";
+  if (!d.lastSeenAt) return "jamais connecté";
   return `vu ${timeAgo(d.lastSeenAt)}`;
 }
 

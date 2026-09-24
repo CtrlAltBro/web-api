@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ok } from "./lib/api";
 import { isOnline, statusLabel, timeAgo, type Device } from "./lib/device";
+import ScreenTime from "./ScreenTime";
 
 type Command = {
   id: string;
@@ -44,6 +45,14 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
     const timer = setInterval(loadCommands, 5_000);
     return () => clearInterval(timer);
   }, [loadCommands]);
+
+  // Tell the API a parent is watching so the agent streams in fast mode.
+  useEffect(() => {
+    const beat = () => api.v1.devices[":id"].heartbeat.$post({ param: { id: device.id } }).catch(() => {});
+    beat();
+    const timer = setInterval(beat, 30_000);
+    return () => clearInterval(timer);
+  }, [device.id]);
 
   useEffect(() => {
     ok(api.v1.devices[":id"].apps.$get({ param: { id: device.id } }))
@@ -155,6 +164,8 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
           )}
         </div>
       </div>
+
+      <ScreenTime deviceId={device.id} />
 
       <div className="panel">
         <h2>

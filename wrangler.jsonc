@@ -8,5 +8,9 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // Agent heartbeat / presence signals. Local dev uses a simulated namespace;
+  // before deploying, create a real one: `npx wrangler kv namespace create SIGNALS`
+  // and paste its id here.
+  "kv_namespaces": [{ "binding": "SIGNALS", "id": "signals_placeholder_replace_before_deploy" }],
   "observability": { "enabled": true }
 }

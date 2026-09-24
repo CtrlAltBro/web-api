@@ -1,12 +1,15 @@
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { PoolClient } from "pg";
 import { HTTPException } from "hono/http-exception";
 import { requireDevice, transaction, type AppEnv } from "../context";
 import { newDeviceToken, normalizePairingCode, sha256 } from "../lib/tokens";
+import { cacheDeviceToken, deviceIdFromToken, getRev, isViewing, markOffline, touchSeen } from "../lib/signals";
 import { pairInput, syncInput, type AppRule, type PairResponse, type SiteRule, type SyncResponse } from "../schemas";
 
 const NEXT_SYNC_SECONDS = 15;
+const PING_SECONDS = 30;
+const bearerToken = (header: string | undefined) => header?.match(/^Bearer (cab_[\w-]+)$/)?.[1];
 
 export const agentRoutes = new Hono<AppEnv>()
   .post("/pair", zValidator("json", pairInput), async (c) => {
@@ -37,12 +40,41 @@ export const agentRoutes = new Hono<AppEnv>()
     });
 
     if (!deviceId) throw new HTTPException(400, { message: "invalid or expired pairing code" });
+    console.log(`[pair] 🤝 nouveau PC appairé ${deviceId.slice(0, 8)}`);
+    c.executionCtx.waitUntil(cacheDeviceToken(c.env.SIGNALS, tokenHash, deviceId));
     return c.json<PairResponse>({ deviceId, token }, 201);
+  })
+
+  // Cheap heartbeat: KV only, no Neon. Tells the agent whether anything changed
+  // (rev) and whether the parent is watching (fast mode).
+  .post("/ping", async (c) => {
+    const kv = c.env.SIGNALS;
+    const deviceId = await deviceIdCheap(c);
+    const [rev, viewing] = await Promise.all([getRev(kv, deviceId), isViewing(kv, deviceId)]);
+    c.executionCtx.waitUntil(touchSeen(kv, deviceId));
+    if (viewing) console.log(`[ping] 👀 le parent regarde ${deviceId.slice(0, 8)} → je réponds "mode rapide"`);
+    return c.json({ rev: rev ?? "0", fast: viewing, nextPingSeconds: viewing ? NEXT_SYNC_SECONDS : PING_SECONDS });
+  })
+
+  // Agent quitting or PC shutting down: shown offline right away. KV only.
+  .post("/bye", async (c) => {
+    const deviceId = await deviceIdCheap(c);
+    await markOffline(c.env.SIGNALS, deviceId);
+    console.log(`[bye] 👋 ${deviceId.slice(0, 8)} se déconnecte → affiché hors ligne`);
+    return c.body(null, 204);
   })
 
   .post("/sync", requireDevice, zValidator("json", syncInput), async (c) => {
     const input = c.req.valid("json");
     const device = c.var.device;
+    const kv = c.env.SIGNALS;
+    const token = bearerToken(c.req.header("authorization"));
+    const sent = [input.apps?.length && "apps", input.screenTime?.length && "temps", input.commandResults?.length && "résultats"]
+      .filter(Boolean)
+      .join("+");
+    console.log(`[sync] ⬆️  ${device.id.slice(0, 8)} ${sent ? `envoie ${sent}` : "(rien à envoyer)"}`);
+    c.executionCtx.waitUntil(touchSeen(kv, device.id));
+    if (token) c.executionCtx.waitUntil(sha256(token).then((h) => cacheDeviceToken(kv, h, device.id)));
 
     const response = await transaction(
       c.var.db,
@@ -121,6 +153,26 @@ export const agentRoutes = new Hono<AppEnv>()
 
     return c.json<SyncResponse>(response);
   });
+
+// Device id from the Bearer token via the KV cache, so /ping and /bye skip Neon.
+// Cold cache (e.g. first ping after deploy): one DB lookup, then cached.
+async function deviceIdCheap(c: Context<AppEnv>) {
+  const token = bearerToken(c.req.header("authorization"));
+  if (!token) throw new HTTPException(401, { message: "unauthorized" });
+  const hash = await sha256(token);
+  const kv = c.env.SIGNALS;
+
+  const cached = await deviceIdFromToken(kv, hash);
+  if (cached) return cached;
+  const { rows } = await c.var.db.query<{ id: string }>(
+    `select id from devices where token_hash = $1 and revoked_at is null`,
+    [hash],
+  );
+  if (!rows[0]) throw new HTTPException(401, { message: "unauthorized" });
+  c.executionCtx.waitUntil(cacheDeviceToken(kv, hash, rows[0].id));
+  console.log(`[ping] 🧊 cache froid, token relu en base pour ${rows[0].id.slice(0, 8)}`);
+  return rows[0].id;
+}
 
 async function loadRules(tx: PoolClient, deviceId: string, version: number) {
   const { rows } = await tx.query<{
