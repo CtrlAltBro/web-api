@@ -26,7 +26,7 @@ Dashboard (React) + API (Hono) served by a single Cloudflare Worker. The only co
 
 Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `devices.rules_version`; `/sync` returns rules only when the agent's version is stale.
 
-**Cheap sync.** The agent calls `/api/agent/v1/ping` every 30 s (KV only, no Neon): it returns `rev`, `fast` (parent watching), `nextPingSeconds`. A full `/sync` (which does touch Neon) runs only when `rev` changed, there is data to upload, or a parent is watching (fast mode, 15 s). This keeps Neon asleep when idle (~10 CU-h/mo/PC instead of ~180). The device list's online dot comes from KV `seen:`, not `last_seen_at`. Local dev uses a simulated KV namespace (Miniflare, `.wrangler/state`), no config needed.
+**Cheap sync.** The agent calls `/api/agent/v1/ping` every 30 s (KV only, no Neon): it returns `rev`, `fast` (parent watching), `nextPingSeconds`. A full `/sync` (which does touch Neon) runs only when `rev` changed, there is data to upload, or a parent is watching (fast mode, 15 s). This keeps Neon asleep when idle (~10 CU-h/mo/PC instead of ~180). The device list's online dot comes from KV `seen:`, not `last_seen_at`; the agent calls `/api/agent/v1/bye` (KV only) when it quits or Windows shuts down, which deletes `seen:` so the PC shows offline right away. Local dev uses a simulated KV namespace (Miniflare, `.wrangler/state`), no config needed.
 
 ## Conventions
 

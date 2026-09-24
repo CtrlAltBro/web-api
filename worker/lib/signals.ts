@@ -37,3 +37,6 @@ export async function touchSeen(kv: KV, deviceId: string) {
 }
 
 export const isOnlineInKv = async (kv: KV, deviceId: string) => (await kv.get(seenKey(deviceId))) !== null;
+
+// Agent quitting / PC shutting down: show it offline now instead of when "seen" expires.
+export const markOffline = (kv: KV, deviceId: string) => kv.delete(seenKey(deviceId));

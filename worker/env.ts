@@ -4,6 +4,7 @@
 export type KV = {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<unknown>;
+  delete(key: string): Promise<unknown>;
 };
 
 export type Bindings = {
