@@ -46,6 +46,14 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
     return () => clearInterval(timer);
   }, [loadCommands]);
 
+  // Tell the API a parent is watching so the agent streams in fast mode.
+  useEffect(() => {
+    const beat = () => api.v1.devices[":id"].heartbeat.$post({ param: { id: device.id } }).catch(() => {});
+    beat();
+    const timer = setInterval(beat, 30_000);
+    return () => clearInterval(timer);
+  }, [device.id]);
+
   useEffect(() => {
     ok(api.v1.devices[":id"].apps.$get({ param: { id: device.id } }))
       .then((res) => res.json() as Promise<{ apps: App[] }>)

@@ -19,11 +19,14 @@ Dashboard (React) + API (Hono) served by a single Cloudflare Worker. The only co
 | `worker/routes/devices.ts` | `/api/v1/*` dashboard routes (session cookie), ownership checked on every device route |
 | `worker/schemas.ts` | Zod schemas = the agent contract. The agent mirrors it in `app/src/shared/api-types.ts`: breaking changes go in `/api/agent/v2` |
 | `worker/context.ts` | `requireUser`, `requireDevice`, `transaction()` |
-| `worker/env.ts` | Explicit bindings type (the dashboard imports worker types, so no global `Env`) |
+| `worker/lib/signals.ts` | Workers KV coordination so `/ping` never hits Neon: `tok:` (token→id cache), `rev:` (bumped on command/rule change), `view:` (parent watching → fast mode), `seen:` (online status) |
+| `worker/env.ts` | Explicit bindings type incl. `SIGNALS` KV (typed structurally as `KV`, not the Workers global, so the dashboard build can import worker types) |
 | `src/` | Dashboard: login/signup, "Mes PC" (list, pairing code, delete). Typed client `hc<AppType>` in `src/lib/api.ts` |
 | `scripts/fake-agent.mjs` | Stand-in agent: `pair <CODE>` then `sync` |
 
 Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `devices.rules_version`; `/sync` returns rules only when the agent's version is stale.
+
+**Cheap sync.** The agent calls `/api/agent/v1/ping` every 30 s (KV only, no Neon): it returns `rev`, `fast` (parent watching), `nextPingSeconds`. A full `/sync` (which does touch Neon) runs only when `rev` changed, there is data to upload, or a parent is watching (fast mode, 15 s). This keeps Neon asleep when idle (~10 CU-h/mo/PC instead of ~180). The device list's online dot comes from KV `seen:`, not `last_seen_at`. Local dev uses a simulated KV namespace (Miniflare, `.wrangler/state`), no config needed.
 
 ## Conventions
 
@@ -40,7 +43,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 
 - [ ] Dashboard pages per device: installed apps with block / limit actions, screen time charts, history, rules list, commands; rename device; routing.
 - [ ] Visual identity / design of the dashboard.
-- [ ] Deploy: `wrangler login`, secrets (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`), run migrations on `production`.
+- [ ] Deploy: `wrangler login`, secrets (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`), run migrations on `production`, and create the KV namespace (`wrangler kv namespace create SIGNALS`) then replace the placeholder `id` in `wrangler.jsonc`.
 - [ ] **Open issue:** Better Auth password hashing ≈ 50 ms CPU vs 10 ms on the Workers free plan. Options: Workers Paid ($5/mo), OAuth-only login, or deploy and measure. Undecided.
 - [ ] Refuse rules on protected system executables (`explorer.exe`, `winlogon.exe`…) server-side too.
 - [ ] Rate-limit `/api/agent/v1/pair`; friendlier validation errors (currently raw Zod output).
