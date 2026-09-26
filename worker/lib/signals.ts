@@ -44,3 +44,19 @@ export const isOnlineInKv = async (kv: KV, deviceId: string) => (await kv.get(se
 
 // Agent quitting / PC shutting down: show it offline now instead of when "seen" expires.
 export const markOffline = (kv: KV, deviceId: string) => kv.delete(seenKey(deviceId));
+
+// health:<id> → JSON { appConnected, childSignedIn } (TTL): a live snapshot from
+// the agent's /ping, so the dashboard can show whether the child is signed in and
+// the session app is connected. Expires with the device going offline.
+export type DeviceHealth = { appConnected: boolean; childSignedIn: boolean };
+const healthKey = (id: string) => `health:${id}`;
+export const setHealth = (kv: KV, deviceId: string, h: DeviceHealth) =>
+  kv.put(healthKey(deviceId), JSON.stringify(h), { expirationTtl: SEEN_TTL_S });
+export async function getHealth(kv: KV, deviceId: string): Promise<DeviceHealth | null> {
+  const v = await kv.get(healthKey(deviceId));
+  try {
+    return v ? (JSON.parse(v) as DeviceHealth) : null;
+  } catch {
+    return null;
+  }
+}

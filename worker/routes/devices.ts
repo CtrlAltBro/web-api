@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireUser, transaction, type AppEnv } from "../context";
 import { newPairingCode, normalizePairingCode, sha256 } from "../lib/tokens";
 import { isProtectedExe } from "../lib/protected";
-import { bumpRev, isOnlineInKv, markViewing } from "../lib/signals";
+import { bumpRev, getHealth, isOnlineInKv, markViewing } from "../lib/signals";
 import { ruleUsage } from "../lib/usage";
 import {
   commandInput,
@@ -43,9 +43,12 @@ export const deviceRoutes = new Hono<AppEnv>()
          from devices where user_id = $1 order by created_at`,
       [c.var.user.id],
     );
-    // Live online status from KV (agent pings every 30 s) rather than the DB last_seen_at.
-    const online = await Promise.all(rows.map((d) => isOnlineInKv(c.env.SIGNALS, d.id)));
-    const devices = rows.map((d, i) => ({ ...d, online: online[i] }));
+    // Live online status + health from KV (agent pings every 30 s) rather than the DB.
+    const [online, health] = await Promise.all([
+      Promise.all(rows.map((d) => isOnlineInKv(c.env.SIGNALS, d.id))),
+      Promise.all(rows.map((d) => getHealth(c.env.SIGNALS, d.id))),
+    ]);
+    const devices = rows.map((d, i) => ({ ...d, online: online[i], health: health[i] }));
     return c.json({ devices });
   })
 

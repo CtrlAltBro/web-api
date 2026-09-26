@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ok } from "./lib/api";
-import { isOnline, statusLabel, timeAgo, type Device } from "./lib/device";
+import { healthLabel, isOnline, statusLabel, timeAgo, type Device } from "./lib/device";
 import Rules from "./Rules";
 import ScreenTime from "./ScreenTime";
 
@@ -107,6 +107,7 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
           <h1>{device.name}</h1>
           <p className="meta">
             <span className={`dot ${online ? "on" : ""}`} /> {statusLabel(device)}
+            {healthLabel(device) && <> · {healthLabel(device)}</>}
             {device.agentVersion && <> · agent v{device.agentVersion}</>} · ajouté le{" "}
             {new Date(device.createdAt).toLocaleDateString()}
           </p>

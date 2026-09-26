@@ -6,7 +6,16 @@ export type Device = {
   lastSeenAt: string | null;
   // Live status from KV (the list route sets it); undefined on routes that don't.
   online?: boolean;
+  // Live health from KV: whether a child is signed in and the session app is connected.
+  health?: { appConnected: boolean; childSignedIn: boolean } | null;
 };
+
+// A short health line for an online device, or null when there is nothing useful to say.
+export function healthLabel(d: Device): string | null {
+  if (!isOnline(d) || !d.health) return null;
+  if (!d.health.childSignedIn) return "aucun enfant connecté";
+  return d.health.appConnected ? "enfant connecté · app active" : "enfant connecté · app inactive";
+}
 
 const ONLINE_THRESHOLD_MS = 60_000;
 
