@@ -133,6 +133,7 @@ export const ruleInput = z.union([
 export const commandInput = z.discriminatedUnion("type", [
   z.object({ type: z.literal("kill_app"), payload: z.object({ exeName }) }),
   z.object({ type: z.literal("lock_session") }),
+  z.object({ type: z.literal("recalibrate") }),
   z.object({ type: z.literal("show_message"), payload: z.object({ text: z.string().trim().min(1).max(500) }) }),
 ]);
 

@@ -17,12 +17,14 @@ type App = { exeName: string; name: string; path: string | null; lastSeenAt: str
 type CommandInput =
   | { type: "show_message"; payload: { text: string } }
   | { type: "kill_app"; payload: { exeName: string } }
-  | { type: "lock_session" };
+  | { type: "lock_session" }
+  | { type: "recalibrate" };
 
 const COMMAND_LABELS: Record<string, string> = {
   show_message: "Message",
   kill_app: "Fermer une app",
   lock_session: "Verrouillage",
+  recalibrate: "Recalibrage",
 };
 const STATUS_LABELS: Record<Command["status"], string> = { pending: "en attente", done: "fait", failed: "échec" };
 
@@ -94,6 +96,15 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
     if (confirm(`Verrouiller la session sur « ${device.name} » ?`)) send({ type: "lock_session" });
   }
 
+  function onRecalibrate() {
+    if (
+      confirm(
+        `Recalibrer « ${device.name} » ?\n\nLève tous les blocages d'applications posés localement par l'agent (utile pour enlever un artefact, ex. une app restée bloquée). Les limites encore dépassées seront ré-appliquées automatiquement.`,
+      )
+    )
+      send({ type: "recalibrate" });
+  }
+
   const online = isOnline(device);
 
   return (
@@ -139,6 +150,10 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
             <button className="danger" onClick={onLock}>
               Verrouiller maintenant
             </button>
+          </div>
+          <div className="action">
+            <label>Maintenance</label>
+            <button onClick={onRecalibrate}>Recalibrer (lever les blocages)</button>
           </div>
         </div>
 
