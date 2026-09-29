@@ -19,14 +19,15 @@ Dashboard (React) + API (Hono) served by a single Cloudflare Worker. The only co
 | `worker/routes/devices.ts` | `/api/v1/*` dashboard routes (session cookie), ownership checked on every device route |
 | `worker/schemas.ts` | Zod schemas = the agent contract. The agent mirrors it in `app/src/shared/api-types.ts`: breaking changes go in `/api/agent/v2` |
 | `worker/context.ts` | `requireUser`, `requireDevice`, `transaction()` |
-| `worker/lib/signals.ts` | Workers KV coordination so `/ping` never hits Neon: `tok:` (token→id cache), `rev:` (bumped on command/rule change), `view:` (parent watching → fast mode), `seen:` (online status) |
+| `worker/lib/signals.ts` | Workers KV coordination so `/ping` never hits Neon: `tok:` (token→id cache), `rev:` (bumped on command/rule change), `view:` (parent watching → fast mode), `pres:` (presence: last contact, health, clean-offline reason) |
+| `worker/lib/presence.ts` | Online / silent status derived from `pres:` (silent = no contact for 20+ min without `/bye`, child signed in, 07:00–23:00 PC time, within 24 h) |
 | `worker/env.ts` | Explicit bindings type incl. `SIGNALS` KV (typed structurally as `KV`, not the Workers global, so the dashboard build can import worker types) |
 | `src/` | Dashboard: login/signup, "Mes PC" (list, pairing code, delete). Typed client `hc<AppType>` in `src/lib/api.ts` |
 | `scripts/fake-agent.mjs` | Stand-in agent: `pair <CODE>` then `sync` |
 
 Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `devices.rules_version`; `/sync` returns rules only when the agent's version is stale.
 
-**Cheap sync.** The agent calls `/api/agent/v1/ping` every 30 s (KV only, no Neon): it returns `rev`, `fast` (parent watching), `nextPingSeconds`. A full `/sync` (which does touch Neon) runs only when `rev` changed, there is data to upload, or a parent is watching (fast mode, 15 s). This keeps Neon asleep when idle (~10 CU-h/mo/PC instead of ~180). The device list's online dot comes from KV `seen:`, not `last_seen_at`; the agent calls `/api/agent/v1/bye` (KV only) when it quits or Windows shuts down, which deletes `seen:` so the PC shows offline right away. Local dev uses a simulated KV namespace (Miniflare, `.wrangler/state`), no config needed.
+**Cheap sync.** The agent calls `/api/agent/v1/ping` every 30 s (KV only, no Neon): it returns `rev`, `fast` (parent watching), `nextPingSeconds`. A full `/sync` (which does touch Neon) runs only when `rev` changed, there is data to upload, or a parent is watching (fast mode, 15 s). This keeps Neon asleep when idle (~10 CU-h/mo/PC instead of ~180). The device list's status comes from the KV presence record `pres:<id>` (kept a week, rewritten only every 4 min, on a health change or on `/bye`), not `last_seen_at`. The agent calls `/api/agent/v1/bye` with a reason (`shutdown` on quit / Windows shutdown, `sleep` when Windows suspends), which shows the PC offline right away and keeps it from being flagged silent; contacts in the 60 s after a sleep goodbye are ignored. Local dev uses a simulated KV namespace (Miniflare, `.wrangler/state`), no config needed.
 
 ## Conventions
 
@@ -39,6 +40,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 - Auth (sign-up / sign-in / sign-out), dashboard shell with devices and pairing.
 - Full API: pairing, sync, apps, screen time (per day/app, time zone aware), paginated history, rules (block / daily limit), commands.
 - Tamper events: optional `events` field in `/sync` (`app_killed`, `service_restarted`, `clock_changed`, `timezone_changed`, `pipe_spoof`, `uninstall`), stored idempotently in `tamper_events` (migration 0004, id generated on the PC, cascade-deleted with the device), `GET /devices/:id/events`, "Alertes" panel on the device page.
+- Silent-agent alert: a device that stops reaching the API for 20+ min without a `/bye` while the child was signed in, during the child's active hours, is shown with a red dot and a banner (agent must say goodbye on shutdown/sleep).
 
 ## To do
 
@@ -49,4 +51,4 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 - [ ] Refuse rules on protected system executables (`explorer.exe`, `winlogon.exe`…) server-side too.
 - [ ] Rate-limit `/api/agent/v1/pair`; friendlier validation errors (currently raw Zod output).
 - [ ] Data retention for `browser_history` / `screen_time_sessions`.
-- [ ] Offline alert: flag (and later notify the parent about) a device that synced recently but has been silent for more than X minutes during the day. Main tamper safeguard, see the agent's `CLAUDE.md` ("Target architecture: tamper resistance").
+- [ ] Silent-agent alert: notify the parent (email / push), not only the dashboard's red status; let the parent set the threshold and active hours.
