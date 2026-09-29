@@ -8,7 +8,13 @@ export type Device = {
   online?: boolean;
   // Live health from KV: whether a child is signed in and the session app is connected.
   health?: { appConnected: boolean; childSignedIn: boolean } | null;
+  // Set when the agent went quiet during the child's active hours without a goodbye.
+  silentSince?: string | null;
 };
+
+// Agent went quiet without saying goodbye: likely neutralized (Safe Mode, forced
+// power-off, service stopped…). Worth the parent's attention.
+export const isSilent = (d: Device) => !!d.silentSince;
 
 // A short health line for an online device, or null when there is nothing useful to say.
 export function healthLabel(d: Device): string | null {
@@ -26,6 +32,7 @@ export function isOnline(d: Device) {
 
 export function statusLabel(d: Device) {
   if (isOnline(d)) return "en ligne";
+  if (d.silentSince) return `⚠ ne répond plus ${timeAgo(d.silentSince)}`;
   if (!d.lastSeenAt) return "jamais connecté";
   return `vu ${timeAgo(d.lastSeenAt)}`;
 }
