@@ -3,20 +3,21 @@ import type { KV } from "../env";
 // - tok:<hash>  → deviceId          (token cache, lets /ping authenticate without a DB hit)
 // - rev:<id>    → timestamp string  (bumped when a command or rule changes → agent does a full sync)
 // - view:<id>   → "1" (TTL)         (parent is watching this device → agent goes fast)
-// - seen:<id>   → write time (TTL)  (agent pinged recently → device shown online, no DB write)
+// - pres:<id>   → presence JSON     (last contact, health, clean-offline reason; see below)
 
 const TOKEN_TTL_S = 60 * 60 * 24 * 30; // 30 days
 const VIEW_TTL_S = 60; // parent presence window; the dashboard re-pings every 30 s
-// "seen" holds the time it was written. Pings refresh it once it is older than
-// SEEN_REFRESH_MS, so it never expires while the agent keeps pinging (no flicker),
-// and a PC that stops pinging shows offline 2-6 min later. ~1 write / 4 min / PC.
-const SEEN_TTL_S = 360;
-const SEEN_REFRESH_MS = 4 * 60 * 1000;
+// Presence is kept for a week (not a short TTL) so the dashboard can tell a PC that
+// went quiet — and since when — from one that said goodbye. Writes are the binding
+// KV limit, so a ping only rewrites it when it is older than PRESENCE_REFRESH_MS,
+// when the health changes, or after a goodbye: ~1 write / 4 min / PC.
+const PRESENCE_TTL_S = 7 * 24 * 60 * 60;
+const PRESENCE_REFRESH_MS = 4 * 60 * 1000;
 
 const tokKey = (hash: string) => `tok:${hash}`;
 const revKey = (id: string) => `rev:${id}`;
 const viewKey = (id: string) => `view:${id}`;
-const seenKey = (id: string) => `seen:${id}`;
+const presenceKey = (id: string) => `pres:${id}`;
 
 export const cacheDeviceToken = (kv: KV, tokenHash: string, deviceId: string) =>
   kv.put(tokKey(tokenHash), deviceId, { expirationTtl: TOKEN_TTL_S });
@@ -33,30 +34,45 @@ export const markViewing = (kv: KV, deviceId: string) =>
 
 export const isViewing = async (kv: KV, deviceId: string) => (await kv.get(viewKey(deviceId))) !== null;
 
-export async function touchSeen(kv: KV, deviceId: string) {
-  const writtenAt = Number(await kv.get(seenKey(deviceId)));
-  if (writtenAt && Date.now() - writtenAt < SEEN_REFRESH_MS) return false;
-  await kv.put(seenKey(deviceId), String(Date.now()), { expirationTtl: SEEN_TTL_S });
-  return true;
-}
-
-export const isOnlineInKv = async (kv: KV, deviceId: string) => (await kv.get(seenKey(deviceId))) !== null;
-
-// Agent quitting / PC shutting down: show it offline now instead of when "seen" expires.
-export const markOffline = (kv: KV, deviceId: string) => kv.delete(seenKey(deviceId));
-
-// health:<id> → JSON { appConnected, childSignedIn } (TTL): a live snapshot from
-// the agent's /ping, so the dashboard can show whether the child is signed in and
-// the session app is connected. Expires with the device going offline.
+// Whether a child is signed in and the session app is connected (from /ping).
 export type DeviceHealth = { appConnected: boolean; childSignedIn: boolean };
-const healthKey = (id: string) => `health:${id}`;
-export const setHealth = (kv: KV, deviceId: string, h: DeviceHealth) =>
-  kv.put(healthKey(deviceId), JSON.stringify(h), { expirationTtl: SEEN_TTL_S });
-export async function getHealth(kv: KV, deviceId: string): Promise<DeviceHealth | null> {
-  const v = await kv.get(healthKey(deviceId));
+// Last contact (ms), last health, and why it went offline cleanly: "shutdown" (agent
+// quit / PC shutting down) or "sleep" (PC going to sleep). No `off` + old `at` = silent.
+export type Presence = { at: number; health?: DeviceHealth; off?: "shutdown" | "sleep" };
+
+export async function getPresence(kv: KV, deviceId: string): Promise<Presence | null> {
+  const v = await kv.get(presenceKey(deviceId));
   try {
-    return v ? (JSON.parse(v) as DeviceHealth) : null;
+    return v ? (JSON.parse(v) as Presence) : null;
   } catch {
     return null;
   }
+}
+
+const putPresence = (kv: KV, deviceId: string, p: Presence) =>
+  kv.put(presenceKey(deviceId), JSON.stringify(p), { expirationTtl: PRESENCE_TTL_S });
+
+const sameHealth = (a?: DeviceHealth, b?: DeviceHealth) =>
+  a?.appConnected === b?.appConnected && a?.childSignedIn === b?.childSignedIn;
+
+// A PC going to sleep may still get a last upload through right after its "sleep"
+// goodbye; don't let that contact turn it back into "online" (then "silent").
+const SLEEP_GRACE_MS = 60 * 1000;
+
+// The agent reached us (/ping with its health, or /sync without).
+export async function recordContact(kv: KV, deviceId: string, health?: DeviceHealth) {
+  const prev = await getPresence(kv, deviceId);
+  if (prev?.off === "sleep" && Date.now() - prev.at < SLEEP_GRACE_MS) return false;
+  const nextHealth = health ?? prev?.health;
+  const fresh = prev && !prev.off && Date.now() - prev.at < PRESENCE_REFRESH_MS;
+  if (fresh && sameHealth(prev.health, nextHealth)) return false;
+  await putPresence(kv, deviceId, { at: Date.now(), ...(nextHealth && { health: nextHealth }) });
+  return true;
+}
+
+// Agent quitting, PC shutting down or going to sleep: offline right away, and not
+// "silent" (it said goodbye).
+export async function markOffline(kv: KV, deviceId: string, reason: "shutdown" | "sleep") {
+  const prev = await getPresence(kv, deviceId);
+  await putPresence(kv, deviceId, { at: Date.now(), ...(prev?.health && { health: prev.health }), off: reason });
 }

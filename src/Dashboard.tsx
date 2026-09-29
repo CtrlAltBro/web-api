@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import DeviceDetail from "./DeviceDetail";
 import { api, ok } from "./lib/api";
 import { authClient } from "./lib/auth-client";
-import { isOnline, statusLabel, type Device } from "./lib/device";
+import { isOnline, isSilent, statusLabel, type Device } from "./lib/device";
 
 type PairingCode = { code: string; expiresAt: string };
 
@@ -102,7 +102,7 @@ export default function Dashboard({ email }: { email: string }) {
               {devices.map((d) => (
                 <li key={d.id}>
                   <a href={`#/pc/${d.id}`}>
-                    <span className={`dot ${isOnline(d) ? "on" : ""}`} />
+                    <span className={`dot ${isOnline(d) ? "on" : isSilent(d) ? "silent" : ""}`} />
                     <span>
                       <strong>{d.name}</strong>
                       <small>{statusLabel(d)}</small>

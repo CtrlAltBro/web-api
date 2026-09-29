@@ -209,6 +209,16 @@ kbd.accent {
   animation: pulse 2s infinite;
 }
 
+.dot.silent {
+  background: var(--danger);
+  opacity: 1;
+}
+
+.notice.silent {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 @keyframes pulse {
   70% {
     box-shadow: 0 0 0 6px transparent;

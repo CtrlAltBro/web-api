@@ -5,7 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { requireDevice, transaction, type AppEnv } from "../context";
 import { newDeviceToken, normalizePairingCode, sha256 } from "../lib/tokens";
 import { ruleUsage } from "../lib/usage";
-import { cacheDeviceToken, deviceIdFromToken, getRev, isViewing, markOffline, setHealth, touchSeen } from "../lib/signals";
+import { cacheDeviceToken, deviceIdFromToken, getRev, isViewing, markOffline, recordContact } from "../lib/signals";
 import { pairInput, syncInput, type AppRule, type PairResponse, type SiteRule, type SyncResponse } from "../schemas";
 
 const NEXT_SYNC_SECONDS = 15;
@@ -52,23 +52,25 @@ export const agentRoutes = new Hono<AppEnv>()
     const kv = c.env.SIGNALS;
     const deviceId = await deviceIdCheap(c);
     const [rev, viewing] = await Promise.all([getRev(kv, deviceId), isViewing(kv, deviceId)]);
-    c.executionCtx.waitUntil(touchSeen(kv, deviceId));
-    // Live health snapshot from the agent, for the dashboard (KV only).
+    // Presence + live health snapshot for the dashboard (KV only, rewritten only when needed).
     const body = (await c.req.json().catch(() => ({}))) as { appConnected?: unknown; childSignedIn?: unknown };
-    if (typeof body.appConnected === "boolean" || typeof body.childSignedIn === "boolean") {
-      c.executionCtx.waitUntil(
-        setHealth(kv, deviceId, { appConnected: body.appConnected === true, childSignedIn: body.childSignedIn === true }),
-      );
-    }
+    const health =
+      typeof body.appConnected === "boolean" || typeof body.childSignedIn === "boolean"
+        ? { appConnected: body.appConnected === true, childSignedIn: body.childSignedIn === true }
+        : undefined;
+    c.executionCtx.waitUntil(recordContact(kv, deviceId, health));
     if (viewing) console.log(`[ping] 👀 le parent regarde ${deviceId.slice(0, 8)} → je réponds "mode rapide"`);
     return c.json({ rev: rev ?? "0", fast: viewing, nextPingSeconds: viewing ? NEXT_SYNC_SECONDS : PING_SECONDS });
   })
 
-  // Agent quitting or PC shutting down: shown offline right away. KV only.
+  // Agent quitting, PC shutting down or going to sleep: shown offline right away, and
+  // not flagged as silent (it said goodbye). KV only. Older agents send no body.
   .post("/bye", async (c) => {
     const deviceId = await deviceIdCheap(c);
-    await markOffline(c.env.SIGNALS, deviceId);
-    console.log(`[bye] 👋 ${deviceId.slice(0, 8)} se déconnecte → affiché hors ligne`);
+    const body = (await c.req.json().catch(() => ({}))) as { reason?: unknown };
+    const reason = body.reason === "sleep" ? "sleep" : "shutdown";
+    await markOffline(c.env.SIGNALS, deviceId, reason);
+    console.log(`[bye] 👋 ${deviceId.slice(0, 8)} ${reason === "sleep" ? "se met en veille" : "se déconnecte"} → affiché hors ligne`);
     return c.body(null, 204);
   })
 
@@ -86,7 +88,7 @@ export const agentRoutes = new Hono<AppEnv>()
       .filter(Boolean)
       .join("+");
     console.log(`[sync] ⬆️  ${device.id.slice(0, 8)} ${sent ? `envoie ${sent}` : "(rien à envoyer)"}`);
-    c.executionCtx.waitUntil(touchSeen(kv, device.id));
+    c.executionCtx.waitUntil(recordContact(kv, device.id));
     if (token) c.executionCtx.waitUntil(sha256(token).then((h) => cacheDeviceToken(kv, h, device.id)));
 
     const response = await transaction(

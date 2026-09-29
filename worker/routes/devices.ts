@@ -6,7 +6,8 @@ import { z } from "zod";
 import { requireUser, transaction, type AppEnv } from "../context";
 import { newPairingCode, normalizePairingCode, sha256 } from "../lib/tokens";
 import { isProtectedExe } from "../lib/protected";
-import { bumpRev, getHealth, isOnlineInKv, markViewing } from "../lib/signals";
+import { deviceStatus } from "../lib/presence";
+import { bumpRev, getPresence, markViewing } from "../lib/signals";
 import { ruleUsage } from "../lib/usage";
 import {
   commandInput,
@@ -38,17 +39,21 @@ export const deviceRoutes = new Hono<AppEnv>()
       agentVersion: string | null;
       createdAt: string;
       lastSeenAt: string | null;
+      timeZone: string | null;
     }>(
-      `select id, name, agent_version as "agentVersion", created_at as "createdAt", last_seen_at as "lastSeenAt"
+      `select id, name, agent_version as "agentVersion", created_at as "createdAt", last_seen_at as "lastSeenAt",
+              time_zone as "timeZone"
          from devices where user_id = $1 order by created_at`,
       [c.var.user.id],
     );
-    // Live online status + health from KV (agent pings every 30 s) rather than the DB.
-    const [online, health] = await Promise.all([
-      Promise.all(rows.map((d) => isOnlineInKv(c.env.SIGNALS, d.id))),
-      Promise.all(rows.map((d) => getHealth(c.env.SIGNALS, d.id))),
-    ]);
-    const devices = rows.map((d, i) => ({ ...d, online: online[i], health: health[i] }));
+    // Live status from the KV presence record (agent pings every 30 s) rather than the DB:
+    // online, health, and whether it went silent without a goodbye.
+    const presences = await Promise.all(rows.map((d) => getPresence(c.env.SIGNALS, d.id)));
+    const devices = rows.map(({ timeZone, ...d }, i) => {
+      const status = deviceStatus(presences[i], timeZone);
+      const lastSeenAt = presences[i] ? new Date(presences[i].at).toISOString() : d.lastSeenAt;
+      return { ...d, lastSeenAt, ...status };
+    });
     return c.json({ devices });
   })
 

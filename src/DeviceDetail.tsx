@@ -127,7 +127,15 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
       </div>
 
       {error && <p className="error">{error}</p>}
-      {!online && <p className="notice">Le PC est hors ligne : les commandes partiront à sa prochaine connexion.</p>}
+      {device.silentSince ? (
+        <p className="notice silent">
+          <strong>Ce PC ne répond plus depuis {timeAgo(device.silentSince).replace(/^il y a /, "")}</strong>, alors que
+          l'enfant était connecté et que le PC ne s'est ni éteint ni mis en veille normalement. CtrlAltBro a peut-être été
+          contourné (mode sans échec, extinction forcée, service arrêté…).
+        </p>
+      ) : (
+        !online && <p className="notice">Le PC est hors ligne : les commandes partiront à sa prochaine connexion.</p>
+      )}
 
       <div className="grid">
         <div className="panel">
