@@ -37,6 +37,7 @@ export const TAMPER_EVENT_TYPES = [
   "clock_changed",
   "timezone_changed",
   "pipe_spoof",
+  "safe_mode",
   "uninstall",
 ] as const;
 export type TamperEventType = (typeof TAMPER_EVENT_TYPES)[number];

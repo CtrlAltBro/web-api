@@ -10,6 +10,7 @@ const EVENT_LABELS: Record<string, string> = {
   clock_changed: "Heure du PC modifiée",
   timezone_changed: "Fuseau horaire modifié",
   pipe_spoof: "Tentative d'usurpation de l'app",
+  safe_mode: "Démarrage en mode sans échec",
   uninstall: "Désinstallation de CtrlAltBro",
 };
 
