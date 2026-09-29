@@ -31,6 +31,16 @@ const timeZone = z.string().refine((tz) => {
   }
 }, "unknown time zone");
 
+export const TAMPER_EVENT_TYPES = [
+  "app_killed",
+  "service_restarted",
+  "clock_changed",
+  "timezone_changed",
+  "pipe_spoof",
+  "uninstall",
+] as const;
+export type TamperEventType = (typeof TAMPER_EVENT_TYPES)[number];
+
 export const syncInput = z.object({
   agentVersion: z.string().max(50).optional(),
   // IANA zone of the PC, so "today" for daily limits starts at the child's midnight.
@@ -79,6 +89,17 @@ export const syncInput = z.object({
         id: z.uuid(),
         status: z.enum(["done", "failed"]),
         error: z.string().max(1000).optional(),
+      }),
+    )
+    .max(100)
+    .optional(),
+  events: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        type: z.enum(TAMPER_EVENT_TYPES),
+        at: isoDate,
+        detail: z.string().max(500).optional(),
       }),
     )
     .max(100)

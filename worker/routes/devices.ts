@@ -259,6 +259,22 @@ export const deviceRoutes = new Hono<AppEnv>()
   })
 
 
+  .get("/devices/:id/events", zValidator("param", deviceIdParam), async (c) => {
+    const { id } = c.req.valid("param");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    const { rows } = await c.var.db.query<{
+      id: string;
+      type: string;
+      detail: string | null;
+      occurredAt: string;
+    }>(
+      `select id, type, detail, occurred_at as "occurredAt"
+         from tamper_events where device_id = $1 order by occurred_at desc limit 50`,
+      [id],
+    );
+    return c.json({ events: rows });
+  })
+
   .get("/devices/:id/commands", zValidator("param", deviceIdParam), async (c) => {
     const { id } = c.req.valid("param");
     await assertOwnDevice(c.var.db, c.var.user.id, id);

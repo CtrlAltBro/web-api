@@ -77,7 +77,12 @@ export const agentRoutes = new Hono<AppEnv>()
     const device = c.var.device;
     const kv = c.env.SIGNALS;
     const token = bearerToken(c.req.header("authorization"));
-    const sent = [input.apps?.length && "apps", input.screenTime?.length && "temps", input.commandResults?.length && "résultats"]
+    const sent = [
+      input.apps?.length && "apps",
+      input.screenTime?.length && "temps",
+      input.commandResults?.length && "résultats",
+      input.events?.length && `🚨 ${input.events.length} événement(s)`,
+    ]
       .filter(Boolean)
       .join("+");
     console.log(`[sync] ⬆️  ${device.id.slice(0, 8)} ${sent ? `envoie ${sent}` : "(rien à envoyer)"}`);
@@ -132,6 +137,16 @@ export const agentRoutes = new Hono<AppEnv>()
                  as x(id uuid, browser text, url text, title text, "visitedAt" timestamptz)
              on conflict (id) do nothing`,
             [device.id, JSON.stringify(input.history)],
+          );
+        }
+
+        if (input.events?.length) {
+          await tx.query(
+            `insert into tamper_events (id, device_id, type, detail, occurred_at)
+             select x.id, $1, x.type, x.detail, x.at
+               from jsonb_to_recordset($2::jsonb) as x(id uuid, type text, detail text, at timestamptz)
+             on conflict (id) do nothing`,
+            [device.id, JSON.stringify(input.events)],
           );
         }
 
