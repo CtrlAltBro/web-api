@@ -6,7 +6,7 @@ Dashboard (React) + API (Hono) served by a single Cloudflare Worker. The only co
 
 - **Hono on Cloudflare Workers** (`wrangler.jsonc`, `nodejs_compat`). Chosen over Vercel (Hobby plan can't deploy org repos). Hono keeps it portable for self-hosters.
 - **Better Auth** (email + password), tables in `public`, not Neon Auth — so any Postgres works for self-hosting. Neon Auth is disabled on the Neon project.
-- **Postgres on Neon** — project `shiny-hat-77057118`, branches `production` (untouched, no schema yet) and `dev` (migrations 0001–0002 applied). `neon link --project-id shiny-hat-77057118 --branch dev -y` writes `DATABASE_URL` into `.env.local`; add `BETTER_AUTH_SECRET` (same value on every machine) and `BETTER_AUTH_URL=http://localhost:5173`.
+- **Postgres on Neon** — project `shiny-hat-77057118`, branches `production` (untouched, no schema yet) and `dev` (migrations 0001–0004 applied). `neon link --project-id shiny-hat-77057118 --branch dev -y` writes `DATABASE_URL` into `.env.local`; add `BETTER_AUTH_SECRET` (same value on every machine) and `BETTER_AUTH_URL=http://localhost:5173`.
 - **`pg` with one pool per request** (`max: 1`, closed via `waitUntil`), `sslmode` forced to `verify-full`.
 - **Raw SQL**, migrations in `db/migrations/NNNN_*.sql`, applied by `npm run db:migrate` (tracked in `schema_migrations`). Never edit an applied migration.
 
@@ -38,6 +38,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 
 - Auth (sign-up / sign-in / sign-out), dashboard shell with devices and pairing.
 - Full API: pairing, sync, apps, screen time (per day/app, time zone aware), paginated history, rules (block / daily limit), commands.
+- Tamper events: optional `events` field in `/sync` (`app_killed`, `service_restarted`, `clock_changed`, `timezone_changed`, `pipe_spoof`, `uninstall`), stored idempotently in `tamper_events` (migration 0004, id generated on the PC, cascade-deleted with the device), `GET /devices/:id/events`, "Alertes" panel on the device page.
 
 ## To do
 
@@ -49,4 +50,3 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 - [ ] Rate-limit `/api/agent/v1/pair`; friendlier validation errors (currently raw Zod output).
 - [ ] Data retention for `browser_history` / `screen_time_sessions`.
 - [ ] Offline alert: flag (and later notify the parent about) a device that synced recently but has been silent for more than X minutes during the day. Main tamper safeguard, see the agent's `CLAUDE.md` ("Target architecture: tamper resistance").
-- [ ] Tamper events: new optional `events` field in the `/sync` contract (`worker/schemas.ts`, mirrored in the agent's `src/shared/api-types.ts`) for "session app killed", "service restarted", "clock changed", "uninstall attempt"; a table to store them (new migration); shown on the dashboard.
