@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ok } from "./lib/api";
+import Alerts from "./Alerts";
 import { healthLabel, isOnline, statusLabel, timeAgo, type Device } from "./lib/device";
 import Rules from "./Rules";
 import ScreenTime from "./ScreenTime";
@@ -181,6 +182,8 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
           )}
         </div>
       </div>
+
+      <Alerts deviceId={device.id} />
 
       <Rules deviceId={device.id} apps={apps ?? []} />
 
