@@ -3,6 +3,7 @@ import { api, ok } from "./lib/api";
 import Alerts from "./Alerts";
 import { healthLabel, isOnline, statusLabel, timeAgo, type Device } from "./lib/device";
 import Rules from "./Rules";
+import Sites from "./Sites";
 import ScreenTime from "./ScreenTime";
 
 type Command = {
@@ -194,6 +195,8 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
       <Alerts deviceId={device.id} />
 
       <Rules deviceId={device.id} apps={apps ?? []} />
+
+      <Sites deviceId={device.id} />
 
       <ScreenTime deviceId={device.id} />
 

@@ -681,6 +681,10 @@ kbd.accent {
   border-bottom: 1px solid var(--border);
 }
 
+.site-list li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .rule-list li:last-child {
   border-bottom: none;
 }
