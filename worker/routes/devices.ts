@@ -12,6 +12,7 @@ import { ruleUsage } from "../lib/usage";
 import {
   commandInput,
   deviceIdParam,
+  filtersInput,
   historyQuery,
   ruleInput,
   rulesQuery,
@@ -263,6 +264,29 @@ export const deviceRoutes = new Hono<AppEnv>()
     return c.body(null, 204);
   })
 
+
+  .get("/devices/:id/filters", zValidator("param", deviceIdParam), async (c) => {
+    const { id } = c.req.valid("param");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    const { rows } = await c.var.db.query<{ safeSearch: boolean; youtube: "off" | "moderate" | "strict" }>(
+      `select safe_search as "safeSearch", youtube_restrict as youtube from devices where id = $1`,
+      [id],
+    );
+    return c.json({ filters: rows[0] });
+  })
+
+  // Filters travel with the rules, so a change bumps the rules version like a rule would.
+  .put("/devices/:id/filters", zValidator("param", deviceIdParam), zValidator("json", filtersInput), async (c) => {
+    const { id } = c.req.valid("param");
+    const { safeSearch, youtube } = c.req.valid("json");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    await c.var.db.query(
+      `update devices set safe_search = $2, youtube_restrict = $3, rules_version = rules_version + 1 where id = $1`,
+      [id, safeSearch, youtube],
+    );
+    c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
+    return c.body(null, 204);
+  })
 
   .get("/devices/:id/events", zValidator("param", deviceIdParam), async (c) => {
     const { id } = c.req.valid("param");

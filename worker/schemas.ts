@@ -146,9 +146,15 @@ export type AppRule = {
 };
 export type SiteRule = { pattern: string };
 
+export const YOUTUBE_RESTRICT = ["off", "moderate", "strict"] as const;
+// Content filters the agent forces in the child's browsers.
+export type Filters = { safeSearch: boolean; youtube: (typeof YOUTUBE_RESTRICT)[number] };
+
+export const filtersInput = z.object({ safeSearch: z.boolean(), youtube: z.enum(YOUTUBE_RESTRICT) });
+
 export type SyncResponse = {
   // day: the PC's local date the usage above belongs to (YYYY-MM-DD).
-  rules: { version: number; apps: AppRule[]; sites: SiteRule[]; day?: string } | null;
+  rules: { version: number; apps: AppRule[]; sites: SiteRule[]; filters: Filters; day?: string } | null;
   commands: { id: string; type: string; payload: unknown }[];
   nextSyncSeconds: number;
 };
