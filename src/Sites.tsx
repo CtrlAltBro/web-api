@@ -70,20 +70,26 @@ export default function Sites({ deviceId }: { deviceId: string }) {
       ) : sites.length === 0 ? (
         <p className="muted">Aucun site bloqué. Un site bloqué l'est aussi pour ses sous-domaines.</p>
       ) : (
-        <ul className="rule-list site-list">
-          {sites.map((site) => (
-            <li key={site.id}>
-              <div className="rule-app">
-                <strong>{site.target}</strong>
-              </div>
-              <div className="rule-actions">
-                <button className="link" onClick={() => remove(site)}>
-                  Débloquer
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="rule-list site-list">
+            {sites.map((site) => (
+              <li key={site.id}>
+                <div className="rule-app">
+                  <strong>{site.target}</strong>
+                </div>
+                <div className="rule-actions">
+                  <button className="link" onClick={() => remove(site)}>
+                    Débloquer
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            Bloqués dans Edge, Chrome, Brave et Vivaldi. Les navigateurs qui ne permettent pas ce filtrage (Firefox, Opera,
+            Tor Browser…) sont bloqués tant qu'un site l'est. Une règle posée sur l'un d'eux dans « Règles » passe avant.
+          </p>
+        </>
       )}
     </div>
   );
