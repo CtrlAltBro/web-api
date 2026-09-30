@@ -12,6 +12,7 @@ const EVENT_LABELS: Record<string, string> = {
   pipe_spoof: "Tentative d'usurpation de l'app",
   safe_mode: "Démarrage en mode sans échec",
   uninstall: "Désinstallation de CtrlAltBro",
+  app_renamed: "Application renommée pour contourner un blocage",
 };
 
 const REFRESH_MS = 15_000;

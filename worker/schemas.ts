@@ -64,6 +64,7 @@ export const TAMPER_EVENT_TYPES = [
   "pipe_spoof",
   "safe_mode",
   "uninstall",
+  "app_renamed",
 ] as const;
 export type TamperEventType = (typeof TAMPER_EVENT_TYPES)[number];
 
