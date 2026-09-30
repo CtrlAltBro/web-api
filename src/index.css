@@ -681,6 +681,37 @@ kbd.accent {
   border-bottom: 1px solid var(--border);
 }
 
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.filter-row input[type="checkbox"] {
+  margin-top: 4px;
+}
+
+.filter-row select {
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+}
+
+.filter-row small {
+  display: block;
+  color: var(--muted);
+}
+
 .site-list li {
   grid-template-columns: minmax(0, 1fr) auto;
 }

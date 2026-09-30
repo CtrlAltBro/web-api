@@ -6,7 +6,7 @@ import { requireDevice, transaction, type AppEnv } from "../context";
 import { newDeviceToken, normalizePairingCode, sha256 } from "../lib/tokens";
 import { ruleUsage } from "../lib/usage";
 import { cacheDeviceToken, deviceIdFromToken, getRev, isViewing, markOffline, recordContact } from "../lib/signals";
-import { pairInput, syncInput, type AppRule, type PairResponse, type SiteRule, type SyncResponse } from "../schemas";
+import { pairInput, syncInput, type AppRule, type Filters, type PairResponse, type SiteRule, type SyncResponse } from "../schemas";
 
 const NEXT_SYNC_SECONDS = 15;
 const PING_SECONDS = 30;
@@ -226,7 +226,12 @@ async function loadRules(tx: PoolClient, deviceId: string, version: number, tz: 
     const summary = [...usage.values()].map((u) => `${u.exeName} ${Math.round(u.usedTodaySeconds / 60)} min`).join(", ");
     console.log(`[sync] 📏 règles v${version} envoyées avec l'usage du jour (${day}) : ${summary}`);
   }
-  return { version, apps, sites, ...(day && { day }) };
+  const { rows: f } = await tx.query<Filters>(
+    `select safe_search as "safeSearch", youtube_restrict as youtube from devices where id = $1`,
+    [deviceId],
+  );
+  const filters: Filters = f[0] ?? { safeSearch: false, youtube: "off" };
+  return { version, apps, sites, filters, ...(day && { day }) };
 }
 
 function dedupeBy<T>(items: T[], key: (item: T) => string) {
