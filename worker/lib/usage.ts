@@ -33,3 +33,19 @@ export async function ruleUsage(db: Pool | PoolClient, deviceId: string, tz: str
   );
   return { day, usage };
 }
+
+// Total screen time used today (all apps, since local midnight in `tz`) and the extra
+// minutes the parent granted today, for the total daily cap.
+export async function screenUsageToday(db: Pool | PoolClient, deviceId: string, tz: string) {
+  const { rows } = await db.query<{ seconds: number; extra: number }>(
+    `with b as (select date_trunc('day', now() at time zone $2) at time zone $2 as midnight)
+     select
+       coalesce((select sum(extract(epoch from s.ended_at - greatest(s.started_at, b.midnight)))
+                   from screen_time_sessions s, b
+                  where s.device_id = $1 and s.ended_at > b.midnight), 0)::int as seconds,
+       coalesce((select sum(g.extra_minutes) from time_grants g, b
+                  where g.device_id = $1 and g.granted_at >= b.midnight), 0)::int as extra`,
+    [deviceId, tz],
+  );
+  return { usedTodaySeconds: rows[0]?.seconds ?? 0, extraMinutes: rows[0]?.extra ?? 0 };
+}

@@ -5,6 +5,7 @@ import { healthLabel, isOnline, statusLabel, timeAgo, type Device } from "./lib/
 import Rules from "./Rules";
 import Sites from "./Sites";
 import Filters from "./Filters";
+import Schedule from "./Schedule";
 import ScreenTime from "./ScreenTime";
 
 type Command = {
@@ -200,6 +201,8 @@ export default function DeviceDetail({ device, onBack }: { device: Device; onBac
       <Sites deviceId={device.id} />
 
       <Filters deviceId={device.id} />
+
+      <Schedule deviceId={device.id} />
 
       <ScreenTime deviceId={device.id} />
 
