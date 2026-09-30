@@ -6,11 +6,36 @@ export const exeName = z
   .toLowerCase()
   .regex(/^[^\\/:*?"<>|]{1,255}\.exe$/, "expected an executable name like app.exe");
 
+// A site as the parent types or pastes it ("https://www.YouTube.com/watch?v=…"),
+// stored as the browsers' URLBlocklist expects it: host without "www." (subdomains
+// are blocked with it), punycode for non-ASCII names, plus an optional path.
+export function normalizeSite(input: string): string | null {
+  let s = input.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9+.-]*:\/\//.test(s)) s = `http://${s}`;
+  let url: URL;
+  try {
+    url = new URL(s);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.replace(/^www\./, "");
+  if (!/^([a-z0-9-]+\.)+[a-z0-9-]{2,}$/.test(host)) return null;
+  const path = url.pathname.replace(/\/+$/, "");
+  const site = host + path;
+  return site.length <= 500 ? site : null;
+}
+
 export const sitePattern = z
   .string()
-  .trim()
-  .toLowerCase()
-  .regex(/^[^\s]{1,500}$/, "expected a URL pattern without spaces");
+  .max(2000)
+  .transform((s, ctx) => {
+    const site = normalizeSite(s);
+    if (!site) {
+      ctx.addIssue({ code: "custom", message: "Adresse de site invalide (ex. youtube.com)" });
+      return z.NEVER;
+    }
+    return site;
+  });
 
 export const pairInput = z.object({
   code: z.string().min(1).max(20),
