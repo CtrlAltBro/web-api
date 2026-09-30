@@ -6,7 +6,7 @@ Dashboard (React) + API (Hono) served by a single Cloudflare Worker. The only co
 
 - **Hono on Cloudflare Workers** (`wrangler.jsonc`, `nodejs_compat`). Chosen over Vercel (Hobby plan can't deploy org repos). Hono keeps it portable for self-hosters.
 - **Better Auth** (email + password), tables in `public`, not Neon Auth — so any Postgres works for self-hosting. Neon Auth is disabled on the Neon project.
-- **Postgres on Neon** — project `shiny-hat-77057118`, branches `production` (untouched, no schema yet) and `dev` (migrations 0001–0006 applied). `neon link --project-id shiny-hat-77057118 --branch dev -y` writes `DATABASE_URL` into `.env.local`; add `BETTER_AUTH_SECRET` (same value on every machine) and `BETTER_AUTH_URL=http://localhost:5173`.
+- **Postgres on Neon** — project `shiny-hat-77057118`, branches `production` (untouched, no schema yet) and `dev` (migrations 0001–0007 applied). `neon link --project-id shiny-hat-77057118 --branch dev -y` writes `DATABASE_URL` into `.env.local`; add `BETTER_AUTH_SECRET` (same value on every machine) and `BETTER_AUTH_URL=http://localhost:5173`.
 - **`pg` with one pool per request** (`max: 1`, closed via `waitUntil`), `sslmode` forced to `verify-full`.
 - **Raw SQL**, migrations in `db/migrations/NNNN_*.sql`, applied by `npm run db:migrate` (tracked in `schema_migrations`). Never edit an applied migration.
 
@@ -42,6 +42,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 - Tamper events: optional `events` field in `/sync` (`app_killed`, `service_restarted`, `clock_changed`, `timezone_changed`, `pipe_spoof`, `uninstall`), stored idempotently in `tamper_events` (migration 0004, id generated on the PC, cascade-deleted with the device), `GET /devices/:id/events`, "Alertes" panel on the device page.
 - Blocked sites: "Sites bloqués" panel on the device page (`site` rules, block only). The API normalizes what the parent types (`normalizeSite` in `worker/schemas.ts`: scheme, `www.`, query and trailing slash dropped, punycode host) to the browsers' URL filter format; a site also blocks its subdomains. The agent applies them in Edge, Chrome, Brave and Vivaldi, and blocks the browsers it cannot filter (Firefox, Opera, Tor Browser…) while any site is blocked.
 - Content filters per device ("Filtrage" panel, migration 0006: `devices.safe_search`, `devices.youtube_restrict`): forced SafeSearch (Google, Bing) and YouTube Restricted Mode (off / moderate / strict), sent to the agent as `rules.filters`; a change bumps `rules_version`.
+- Time schedule per device ("Horaires" panel, migration 0007: `devices.schedule` jsonb, `time_grants` table): allowed time windows + total daily screen-time cap per weekday, sent as `rules.schedule`; `rules.screen` carries today's total usage + granted extra minutes. The parent grants extra time (`POST /devices/:id/time-grants`). The agent locks the child's session outside the hours or once the total is used up.
 - Silent-agent alert: a device that stops reaching the API for 20+ min without a `/bye` while the child was signed in, during the child's active hours, is shown with a red dot and a banner (agent must say goodbye on shutdown/sleep).
 
 ## To do

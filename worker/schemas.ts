@@ -152,9 +152,40 @@ export type Filters = { safeSearch: boolean; youtube: (typeof YOUTUBE_RESTRICT)[
 
 export const filtersInput = z.object({ safeSearch: z.boolean(), youtube: z.enum(YOUTUBE_RESTRICT) });
 
+// Time schedule the agent enforces by locking the child's session: per weekday
+// (getDay(): "0" = Sunday … "6" = Saturday), the allowed time windows and an
+// optional total screen-time cap. A weekday absent from `days` is unrestricted.
+const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure invalide (ex. 21:00)");
+export const WEEKDAYS = ["0", "1", "2", "3", "4", "5", "6"] as const;
+export const scheduleInput = z.object({
+  // partialRecord: z.record with enum keys would require all seven weekdays.
+  days: z.partialRecord(
+    z.enum(WEEKDAYS),
+    z.object({
+      windows: z
+        .array(z.object({ from: HHMM, to: HHMM }).refine((w) => w.from < w.to, "La fin d'une plage doit être après son début"))
+        .max(6),
+      maxMinutes: z.number().int().min(0).max(1440).nullable(),
+    }),
+  ),
+});
+export type Schedule = z.infer<typeof scheduleInput>;
+
+// Extra screen time the parent grants for today (added to the day's cap).
+export const grantInput = z.object({ extraMinutes: z.number().int().min(1).max(600) });
+
 export type SyncResponse = {
   // day: the PC's local date the usage above belongs to (YYYY-MM-DD).
-  rules: { version: number; apps: AppRule[]; sites: SiteRule[]; filters: Filters; day?: string } | null;
+  rules: {
+    version: number;
+    apps: AppRule[];
+    sites: SiteRule[];
+    filters: Filters;
+    schedule: Schedule;
+    // Total screen time already used today (all apps) and the parent's extra minutes.
+    screen: { usedTodaySeconds: number; extraMinutes: number };
+    day?: string;
+  } | null;
   commands: { id: string; type: string; payload: unknown }[];
   nextSyncSeconds: number;
 };

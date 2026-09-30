@@ -8,12 +8,14 @@ import { newPairingCode, normalizePairingCode, sha256 } from "../lib/tokens";
 import { isProtectedExe } from "../lib/protected";
 import { deviceStatus } from "../lib/presence";
 import { bumpRev, getPresence, markViewing } from "../lib/signals";
-import { ruleUsage } from "../lib/usage";
+import { ruleUsage, screenUsageToday } from "../lib/usage";
 import {
   commandInput,
   deviceIdParam,
   filtersInput,
+  grantInput,
   historyQuery,
+  scheduleInput,
   ruleInput,
   rulesQuery,
   screenTimeQuery,
@@ -284,6 +286,41 @@ export const deviceRoutes = new Hono<AppEnv>()
       `update devices set safe_search = $2, youtube_restrict = $3, rules_version = rules_version + 1 where id = $1`,
       [id, safeSearch, youtube],
     );
+    c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
+    return c.body(null, 204);
+  })
+
+  .get("/devices/:id/schedule", zValidator("param", deviceIdParam), async (c) => {
+    const { id } = c.req.valid("param");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    const { rows: tzRows } = await c.var.db.query<{ tz: string | null }>(`select time_zone as tz from devices where id = $1`, [id]);
+    const { rows } = await c.var.db.query<{ schedule: unknown }>(`select schedule from devices where id = $1`, [id]);
+    const { usedTodaySeconds, extraMinutes } = await screenUsageToday(c.var.db, id, tzRows[0]?.tz ?? "UTC");
+    return c.json({ schedule: rows[0]?.schedule ?? { days: {} }, usedTodaySeconds, extraMinutes });
+  })
+
+  // Schedule travels with the rules, so a change bumps the rules version.
+  .put("/devices/:id/schedule", zValidator("param", deviceIdParam), zValidator("json", scheduleInput), async (c) => {
+    const { id } = c.req.valid("param");
+    const schedule = c.req.valid("json");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    await c.var.db.query(`update devices set schedule = $2, rules_version = rules_version + 1 where id = $1`, [
+      id,
+      JSON.stringify(schedule),
+    ]);
+    c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
+    return c.body(null, 204);
+  })
+
+  // Grant extra screen time for today (added to the day's total cap).
+  .post("/devices/:id/time-grants", zValidator("param", deviceIdParam), zValidator("json", grantInput), async (c) => {
+    const { id } = c.req.valid("param");
+    const { extraMinutes } = c.req.valid("json");
+    await assertOwnDevice(c.var.db, c.var.user.id, id);
+    await transaction(c.var.db, async (tx) => {
+      await tx.query(`insert into time_grants (device_id, extra_minutes) values ($1, $2)`, [id, extraMinutes]);
+      await tx.query(`update devices set rules_version = rules_version + 1 where id = $1`, [id]);
+    });
     c.executionCtx.waitUntil(bumpRev(c.env.SIGNALS, id));
     return c.body(null, 204);
   })
