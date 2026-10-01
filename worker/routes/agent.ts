@@ -231,7 +231,8 @@ async function loadRules(tx: PoolClient, deviceId: string, version: number, tz: 
     [deviceId],
   );
   const filters: Filters = f[0] ? { safeSearch: f[0].safeSearch, youtube: f[0].youtube } : { safeSearch: false, youtube: "off" };
-  const schedule: Schedule = f[0]?.schedule ?? { days: {} };
+  // A device without a schedule yet holds {} (the column default): always send { days }.
+  const schedule: Schedule = { days: f[0]?.schedule?.days ?? {} };
   const screen = await screenUsageToday(tx, deviceId, tz);
   return { version, apps, sites, filters, schedule, screen, ...(day && { day }) };
 }
