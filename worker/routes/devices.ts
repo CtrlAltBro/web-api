@@ -294,9 +294,9 @@ export const deviceRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     await assertOwnDevice(c.var.db, c.var.user.id, id);
     const { rows: tzRows } = await c.var.db.query<{ tz: string | null }>(`select time_zone as tz from devices where id = $1`, [id]);
-    const { rows } = await c.var.db.query<{ schedule: unknown }>(`select schedule from devices where id = $1`, [id]);
+    const { rows } = await c.var.db.query<{ schedule: { days?: unknown } | null }>(`select schedule from devices where id = $1`, [id]);
     const { usedTodaySeconds, extraMinutes } = await screenUsageToday(c.var.db, id, tzRows[0]?.tz ?? "UTC");
-    return c.json({ schedule: rows[0]?.schedule ?? { days: {} }, usedTodaySeconds, extraMinutes });
+    return c.json({ schedule: { days: rows[0]?.schedule?.days ?? {} }, usedTodaySeconds, extraMinutes });
   })
 
   // Schedule travels with the rules, so a change bumps the rules version.
