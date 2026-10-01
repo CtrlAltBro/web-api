@@ -37,7 +37,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 
 ## Done
 
-- Auth (sign-up / sign-in / sign-out), dashboard shell with devices and pairing.
+- Auth (sign-up / sign-in / sign-out), dashboard shell with devices and pairing. Sign-up can be restricted with the optional `SIGNUP_ALLOWED_EMAILS` secret (comma-separated emails; unset = open, so a fresh self-hosted instance can create its first account), enforced in a Better Auth `user.create.before` hook (`signupAllowed` in `worker/auth.ts`).
 - Full API: pairing, sync, apps, screen time (per day/app, time zone aware), paginated history, rules (block / daily limit), commands.
 - Tamper events: optional `events` field in `/sync` (`app_killed`, `service_restarted`, `clock_changed`, `timezone_changed`, `pipe_spoof`, `safe_mode`, `uninstall`, `app_renamed`), stored idempotently in `tamper_events` (migration 0004, id generated on the PC, cascade-deleted with the device), `GET /devices/:id/events`, "Alertes" panel on the device page.
 - Blocked sites: "Sites bloqués" panel on the device page (`site` rules, block only). The API normalizes what the parent types (`normalizeSite` in `worker/schemas.ts`: scheme, `www.`, query and trailing slash dropped, punycode host) to the browsers' URL filter format; a site also blocks its subdomains. The agent applies them in Edge, Chrome, Brave and Vivaldi, and blocks the browsers it cannot filter (Firefox, Opera, Tor Browser…) while any site is blocked.

@@ -13,5 +13,7 @@ export type Bindings = {
   HYPERDRIVE?: { connectionString: string };
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  // Optional: comma-separated emails allowed to sign up (unset = sign-up open).
+  SIGNUP_ALLOWED_EMAILS?: string;
   SIGNALS: KV;
 };
