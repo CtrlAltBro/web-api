@@ -6,6 +6,7 @@ dist/
 # Secrets
 .env*
 !.env.example
+!.env.production
 .dev.vars*
 .neon
 .DS_Store

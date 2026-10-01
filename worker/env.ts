@@ -9,6 +9,8 @@ export type KV = {
 
 export type Bindings = {
   DATABASE_URL: string;
+  // Production only (wrangler env "production"): pooled Postgres connections.
+  HYPERDRIVE?: { connectionString: string };
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   SIGNALS: KV;
