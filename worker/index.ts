@@ -12,7 +12,10 @@ const app = new Hono<AppEnv>()
   .use(async (c, next) => {
     const db = createPool(c.env);
     c.set("db", db);
-    c.set("auth", createAuth(c.env, db));
+    // The agent API authenticates with device tokens and never uses Better Auth, whose
+    // setup costs CPU on every request; skip it there (the /ping heartbeat is by far
+    // the most frequent request).
+    if (!c.req.path.startsWith("/api/agent/")) c.set("auth", createAuth(c.env, db));
     await next();
     c.executionCtx.waitUntil(db.end());
   })

@@ -9,8 +9,17 @@
     "run_worker_first": ["/api/*"]
   },
   // Agent heartbeat / presence signals. Local dev uses a simulated namespace;
-  // before deploying, create a real one: `npx wrangler kv namespace create SIGNALS`
-  // and paste its id here.
-  "kv_namespaces": [{ "binding": "SIGNALS", "id": "signals_placeholder_replace_before_deploy" }],
-  "observability": { "enabled": true }
+  // production uses this one (created with `npx wrangler kv namespace create SIGNALS`).
+  "kv_namespaces": [{ "binding": "SIGNALS", "id": "2e37b5ab499441c5be3757ef0430bd6d" }],
+  "observability": { "enabled": true },
+  // Production (`npm run deploy`, selected by CLOUDFLARE_ENV in .env.production):
+  // same Worker name and URL, plus Hyperdrive for the database. Bindings are not
+  // inherited by an environment, so KV is repeated here. Local dev uses the top level.
+  "env": {
+    "production": {
+      "name": "ctrlaltbro-web",
+      "kv_namespaces": [{ "binding": "SIGNALS", "id": "2e37b5ab499441c5be3757ef0430bd6d" }],
+      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "add44339b0644ac0a4fee2f1fcb0cf91" }]
+    }
+  }
 }
