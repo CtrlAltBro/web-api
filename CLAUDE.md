@@ -22,7 +22,8 @@ Dashboard (React) + API (Hono) served by a single Cloudflare Worker. The only co
 | `worker/lib/signals.ts` | Workers KV coordination so `/ping` never hits Neon: `tok:` (token→id cache), `rev:` (bumped on command/rule change), `view:` (parent watching → fast mode), `pres:` (presence: last contact, health, clean-offline reason) |
 | `worker/lib/presence.ts` | Online / silent status derived from `pres:` (silent = no contact for 20+ min without `/bye`, child signed in, 07:00–23:00 PC time, within 24 h) |
 | `worker/env.ts` | Explicit bindings type incl. `SIGNALS` KV (typed structurally as `KV`, not the Workers global, so the dashboard build can import worker types) |
-| `src/` | Dashboard: login/signup, "Mes PC" (list, pairing code, delete). Typed client `hc<AppType>` in `src/lib/api.ts` |
+| `src/` | Dashboard: login/signup, "Mes PC" (list, pairing code, delete), device page (`DeviceDetail` → `Today`, `Controls`, `Schedule`, `Applications`, `Web`, `Alerts`). Typed client `hc<AppType>` in `src/lib/api.ts` |
+| `src/ds/` | Port of the CtrlAltBro design system (Claude Design project `8bd6f838…`): `tokens/*.css` and `components/keys.css` copied as is, components (`Key`, `Button`, `KeyTag`, `Logo`, `Card`, `StatusDot`, `Input`, `Switch`) typed in TSX. Import them from `src/ds`, style screens with the tokens (no raw colors) |
 | `scripts/fake-agent.mjs` | Stand-in agent: `pair <CODE>` then `sync` |
 
 Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `devices.rules_version`; `/sync` returns rules only when the agent's version is stale.
@@ -47,8 +48,8 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 
 ## To do
 
-- [ ] Dashboard pages per device: installed apps with block / limit actions, screen time charts, history, rules list, commands; rename device; routing.
-- [ ] Visual identity / design of the dashboard.
+- [x] Dashboard redesign on the design system (night mode, key animations, rename device, inline confirmations instead of `confirm()`). Tamper alerts marked "Compris" are remembered per browser (localStorage), the API keeps them all.
+- [ ] Dashboard: browsing history page (`GET /devices/:id/history` has no UI yet).
 - [x] Deploy (2026-10-01): https://ctrlaltbro-web.ctrlaltbro-web.workers.dev, on a neutral Cloudflare account. `npm run deploy` builds with `.env.production` (`CLOUDFLARE_ENV=production`), which selects the `production` env of `wrangler.jsonc`: same Worker name, KV `SIGNALS` and **Hyperdrive** (`ctrlaltbro-db`, created from the direct URL of the Neon `production` branch). Local dev keeps the top level (no Hyperdrive, direct `DATABASE_URL`). Secrets on the Worker: `DATABASE_URL`, `BETTER_AUTH_SECRET` (its own, not dev's), `BETTER_AUTH_URL`. Migrations on production: `node --env-file=.env.production.local db/migrate.mjs` (`.env.production.local`, gitignored, holds `DATABASE_URL` / `DATABASE_URL_UNPOOLED` of the production branch).
 - [ ] **CPU on the free plan (10 ms):** measured after Hyperdrive and skipping Better Auth on agent routes: `/ping` 1-12 ms (~6), `/sync` 8-37 ms (~20, a few per hour per PC), dashboard reads 12-60 ms, sign-in ~160 ms (scrypt). All succeeded so far (the limit is not enforced per request), but sign-in and dashboard reads exceed it. Next steps if requests start failing: PBKDF2 through WebCrypto for passwords, or Workers Paid ($5/mo, also lifts the KV write limit).
 - [ ] Refuse rules on protected system executables (`explorer.exe`, `winlogon.exe`…) server-side too.

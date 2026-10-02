@@ -16,13 +16,6 @@ export type Device = {
 // power-off, service stopped…). Worth the parent's attention.
 export const isSilent = (d: Device) => !!d.silentSince;
 
-// A short health line for an online device, or null when there is nothing useful to say.
-export function healthLabel(d: Device): string | null {
-  if (!isOnline(d) || !d.health) return null;
-  if (!d.health.childSignedIn) return "aucun enfant connecté";
-  return d.health.appConnected ? "enfant connecté · app active" : "enfant connecté · app inactive";
-}
-
 const ONLINE_THRESHOLD_MS = 60_000;
 
 export function isOnline(d: Device) {
@@ -30,11 +23,35 @@ export function isOnline(d: Device) {
   return !!d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < ONLINE_THRESHOLD_MS;
 }
 
-export function statusLabel(d: Device) {
-  if (isOnline(d)) return "en ligne";
-  if (d.silentSince) return `⚠ ne répond plus ${timeAgo(d.silentSince)}`;
-  if (!d.lastSeenAt) return "jamais connecté";
-  return `vu ${timeAgo(d.lastSeenAt)}`;
+// The device's state for a StatusDot: kind + a label that says it in words.
+export function deviceStatus(d: Device): { status: "online" | "alert" | "offline"; label: string } {
+  if (isOnline(d)) {
+    if (!d.health) return { status: "online", label: "En ligne" };
+    if (!d.health.childSignedIn) return { status: "online", label: "En ligne, aucun enfant connecté" };
+    return {
+      status: "online",
+      label: d.health.appConnected ? "En ligne, session de l'enfant ouverte" : "En ligne, session ouverte mais app inactive",
+    };
+  }
+  if (d.silentSince) return { status: "alert", label: `Ne répond plus depuis ${since(d.silentSince)}` };
+  if (!d.lastSeenAt) return { status: "offline", label: "Jamais connecté" };
+  return { status: "offline", label: `Hors ligne depuis ${clock(d.lastSeenAt)}` };
+}
+
+// "25 min", "3 h", "le 30/09".
+export function since(iso: string) {
+  return timeAgo(iso).replace(/^il y a /, "");
+}
+
+// "18:42" today, "hier à 18:42", or "le 30 sept.".
+export function clock(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === now.toDateString()) return time;
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `hier à ${time}`;
+  return `le ${d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`;
 }
 
 export function timeAgo(iso: string) {
@@ -42,5 +59,5 @@ export function timeAgo(iso: string) {
   if (s < 60) return "à l'instant";
   if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
   if (s < 86_400) return `il y a ${Math.floor(s / 3600)} h`;
-  return `le ${new Date(iso).toLocaleDateString()}`;
+  return `le ${new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`;
 }
