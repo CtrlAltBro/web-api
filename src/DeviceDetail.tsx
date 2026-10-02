@@ -1,237 +1,173 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import Alerts, { type TamperEvent } from "./Alerts";
+import Applications from "./Applications";
+import Controls, { type Command, type CommandInput } from "./Controls";
+import Schedule, { type Sched } from "./Schedule";
+import Today from "./Today";
+import Web from "./Web";
+import { Button, Input, StatusDot } from "./ds";
 import { api, ok } from "./lib/api";
-import Alerts from "./Alerts";
-import { healthLabel, isOnline, statusLabel, timeAgo, type Device } from "./lib/device";
-import Rules from "./Rules";
-import Sites from "./Sites";
-import Filters from "./Filters";
-import Schedule from "./Schedule";
-import ScreenTime from "./ScreenTime";
+import { deviceStatus, isOnline, type Device } from "./lib/device";
+import { REFRESH_MS } from "./lib/format";
+import { usePoll } from "./lib/poll";
 
-type Command = {
-  id: string;
-  type: string;
-  payload: unknown;
-  status: "pending" | "done" | "failed";
-  error: string | null;
-  createdAt: string;
-  executedAt: string | null;
-};
-type App = { exeName: string; name: string; path: string | null; lastSeenAt: string };
-type CommandInput =
-  | { type: "show_message"; payload: { text: string } }
-  | { type: "kill_app"; payload: { exeName: string } }
-  | { type: "lock_session" }
-  | { type: "recalibrate" };
+export type App = { exeName: string; name: string; path: string | null; lastSeenAt: string };
+export type ScheduleState = { schedule: Sched; usedTodaySeconds: number; extraMinutes: number };
 
-const COMMAND_LABELS: Record<string, string> = {
-  show_message: "Message",
-  kill_app: "Fermer une app",
-  lock_session: "Verrouillage",
-  recalibrate: "Recalibrage",
-};
-const STATUS_LABELS: Record<Command["status"], string> = { pending: "en attente", done: "fait", failed: "échec" };
-
-export default function DeviceDetail({ device, onBack }: { device: Device; onBack: () => void }) {
+// One PC: today first (time used, quick actions), then the standing rules
+// (hours, applications, web) in the order a parent tunes them.
+export default function DeviceDetail({ device, onRenamed }: { device: Device; onRenamed: () => void }) {
   const [commands, setCommands] = useState<Command[] | null>(null);
   const [apps, setApps] = useState<App[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const param = { param: { id: device.id } };
+  const [sched, setSched] = useState<ScheduleState | null>(null);
+  const [events, setEvents] = useState<TamperEvent[] | null>(null);
+  const id = device.id;
 
   const loadCommands = useCallback(async () => {
-    try {
-      const res = await ok(api.v1.devices[":id"].commands.$get({ param: { id: device.id } }));
-      setCommands(((await res.json()) as { commands: Command[] }).commands);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [device.id]);
+    const res = await ok(api.v1.devices[":id"].commands.$get({ param: { id } })).catch(() => null);
+    if (res) setCommands(((await res.json()) as { commands: Command[] }).commands);
+  }, [id]);
 
-  useEffect(() => {
-    loadCommands();
-    const timer = setInterval(loadCommands, 5_000);
-    return () => clearInterval(timer);
-  }, [loadCommands]);
+  const loadSchedule = useCallback(async () => {
+    const res = await ok(api.v1.devices[":id"].schedule.$get({ param: { id } })).catch(() => null);
+    if (!res) return;
+    const j = (await res.json()) as ScheduleState;
+    setSched({ ...j, schedule: { days: j.schedule.days ?? {} } });
+  }, [id]);
+
+  const loadEvents = useCallback(async () => {
+    const res = await ok(api.v1.devices[":id"].events.$get({ param: { id } })).catch(() => null);
+    if (res) setEvents(((await res.json()) as { events: TamperEvent[] }).events);
+  }, [id]);
+
+  usePoll(loadCommands, 5_000);
+  usePoll(loadSchedule, REFRESH_MS);
+  usePoll(loadEvents, REFRESH_MS);
 
   // Tell the API a parent is watching so the agent streams in fast mode.
   useEffect(() => {
-    const beat = () => api.v1.devices[":id"].heartbeat.$post({ param: { id: device.id } }).catch(() => {});
+    const beat = () => api.v1.devices[":id"].heartbeat.$post({ param: { id } }).catch(() => {});
     beat();
     const timer = setInterval(beat, 30_000);
     return () => clearInterval(timer);
-  }, [device.id]);
+  }, [id]);
 
   useEffect(() => {
-    ok(api.v1.devices[":id"].apps.$get({ param: { id: device.id } }))
+    ok(api.v1.devices[":id"].apps.$get({ param: { id } }))
       .then((res) => res.json() as Promise<{ apps: App[] }>)
       .then((body) => setApps(body.apps))
-      .catch((e: Error) => setError(e.message));
-  }, [device.id]);
+      .catch(() => setApps([]));
+  }, [id]);
 
   async function send(command: CommandInput) {
-    setError(null);
-    try {
-      await ok(api.v1.devices[":id"].commands.$post({ ...param, json: command }));
-      await loadCommands();
-      return true;
-    } catch (e) {
-      setError((e as Error).message);
-      return false;
-    }
+    await ok(api.v1.devices[":id"].commands.$post({ param: { id }, json: command }));
+    await loadCommands();
   }
-
-  function onMessage(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const text = String(new FormData(form).get("text")).trim();
-    if (text) send({ type: "show_message", payload: { text } }).then((sent) => sent && form.reset());
-  }
-
-  function onKill(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    let exeName = String(new FormData(form).get("exeName")).trim().toLowerCase();
-    if (!exeName) return;
-    if (!exeName.endsWith(".exe")) exeName += ".exe";
-    send({ type: "kill_app", payload: { exeName } }).then((sent) => sent && form.reset());
-  }
-
-  function onLock() {
-    if (confirm(`Verrouiller la session sur « ${device.name} » ?`)) send({ type: "lock_session" });
-  }
-
-  function onRecalibrate() {
-    if (
-      confirm(
-        `Recalibrer « ${device.name} » ?\n\nLève tous les blocages d'applications posés localement par l'agent (utile pour enlever un artefact, ex. une app restée bloquée). Les limites encore dépassées seront ré-appliquées automatiquement.`,
-      )
-    )
-      send({ type: "recalibrate" });
-  }
-
-  const online = isOnline(device);
 
   return (
-    <section className="detail">
-      <button className="link back" onClick={onBack}>
-        ← Mes PC
-      </button>
+    <article className="device">
+      <Header device={device} send={send} onRenamed={onRenamed} />
+      <Alerts device={device} events={events} />
 
-      <div className="detail-head">
-        <div>
-          <h1>{device.name}</h1>
-          <p className="meta">
-            <span className={`dot ${online ? "on" : ""}`} /> {statusLabel(device)}
-            {healthLabel(device) && <> · {healthLabel(device)}</>}
-            {device.agentVersion && <> · agent v{device.agentVersion}</>} · ajouté le{" "}
-            {new Date(device.createdAt).toLocaleDateString()}
-          </p>
-        </div>
-      </div>
+      <section className="today" aria-label="Aujourd'hui">
+        <Today device={device} sched={sched} />
+        <Controls device={device} apps={apps ?? []} commands={commands} sched={sched} send={send} onGranted={loadSchedule} />
+      </section>
 
-      {error && <p className="error">{error}</p>}
-      {device.silentSince ? (
-        <p className="notice silent">
-          <strong>Ce PC ne répond plus depuis {timeAgo(device.silentSince).replace(/^il y a /, "")}</strong>, alors que
-          l'enfant était connecté et que le PC ne s'est ni éteint ni mis en veille normalement. CtrlAltBro a peut-être été
-          contourné (mode sans échec, extinction forcée, service arrêté…).
-        </p>
-      ) : (
-        !online && <p className="notice">Le PC est hors ligne : les commandes partiront à sa prochaine connexion.</p>
-      )}
-
-      <div className="grid">
-        <div className="panel">
-          <h2>Actions</h2>
-          <form className="action" onSubmit={onMessage}>
-            <label htmlFor="text">Afficher un message</label>
-            <div className="inline">
-              <input id="text" name="text" placeholder="On passe à table !" maxLength={500} required />
-              <button>Envoyer</button>
-            </div>
-          </form>
-          <form className="action" onSubmit={onKill}>
-            <label htmlFor="exeName">Fermer une application</label>
-            <div className="inline">
-              <input id="exeName" name="exeName" placeholder="minecraft.exe" required />
-              <button>Fermer</button>
-            </div>
-          </form>
-          <div className="action">
-            <label>Session Windows</label>
-            <button className="danger" onClick={onLock}>
-              Verrouiller maintenant
-            </button>
-          </div>
-          <div className="action">
-            <label>Maintenance</label>
-            <button onClick={onRecalibrate}>Recalibrer (lever les blocages)</button>
-          </div>
-        </div>
-
-        <div className="panel">
-          <h2>Historique des commandes</h2>
-          {commands === null ? (
-            <p className="muted">Chargement…</p>
-          ) : commands.length === 0 ? (
-            <p className="muted">Aucune commande envoyée.</p>
-          ) : (
-            <ul className="commands">
-              {commands.map((c) => (
-                <li key={c.id}>
-                  <div>
-                    <strong>{COMMAND_LABELS[c.type] ?? c.type}</strong> <small>{describe(c)}</small>
-                    {c.error && <small className="error">{c.error}</small>}
-                  </div>
-                  <div className="right">
-                    <span className={`badge ${c.status}`}>{STATUS_LABELS[c.status]}</span>
-                    <small>{timeAgo(c.createdAt)}</small>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <Alerts deviceId={device.id} />
-
-      <Rules deviceId={device.id} apps={apps ?? []} />
-
-      <Sites deviceId={device.id} />
-
-      <Filters deviceId={device.id} />
-
-      <Schedule deviceId={device.id} />
-
-      <ScreenTime deviceId={device.id} />
-
-      <div className="panel">
-        <h2>
-          Applications installées {apps && apps.length > 0 && <span className="count">{apps.length}</span>}
-        </h2>
-        {apps === null ? (
-          <p className="muted">Chargement…</p>
-        ) : apps.length === 0 ? (
-          <p className="muted">Aucune donnée pour l'instant : l'agent n'envoie pas encore l'inventaire.</p>
-        ) : (
-          <ul className="apps">
-            {apps.map((a) => (
-              <li key={a.exeName} title={a.path ?? undefined}>
-                <span>{a.name}</span>
-                <code>{a.exeName}</code>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
+      <Schedule deviceId={id} sched={sched} onSaved={loadSchedule} />
+      <Applications deviceId={id} apps={apps} />
+      <Web deviceId={id} />
+    </article>
   );
 }
 
-function describe(c: Command) {
-  const p = c.payload as { text?: string; exeName?: string } | null;
-  if (p?.text) return `« ${p.text} »`;
-  if (p?.exeName) return p.exeName;
-  return "";
+function Header({ device, send, onRenamed }: { device: Device; send: (c: CommandInput) => Promise<void>; onRenamed: () => void }) {
+  const { status, label } = deviceStatus(device);
+  const [renaming, setRenaming] = useState(false);
+  const [recal, setRecal] = useState<"idle" | "sent" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (recal === "idle") return;
+    const timer = setTimeout(() => setRecal("idle"), 4000);
+    return () => clearTimeout(timer);
+  }, [recal]);
+
+  async function recalibrate() {
+    try {
+      await send({ type: "recalibrate" });
+      setRecal("sent");
+    } catch {
+      setRecal("error");
+    }
+  }
+
+  async function rename(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const name = String(new FormData(e.currentTarget).get("name")).trim();
+    if (!name || name === device.name) return setRenaming(false);
+    try {
+      await ok(api.v1.devices[":id"].$patch({ param: { id: device.id }, json: { name } }));
+      setError(null);
+      setRenaming(false);
+      onRenamed();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  return (
+    <header className="device-head">
+      <a className="back-link" href="#">
+        ← Mes PC
+      </a>
+      {renaming ? (
+        <form className="rename" onSubmit={rename}>
+          <Input
+            name="name"
+            aria-label="Nom du PC"
+            defaultValue={device.name}
+            maxLength={100}
+            autoFocus
+            error={error}
+            onKeyDown={(e) => e.key === "Escape" && setRenaming(false)}
+          />
+          <Button type="submit">Renommer</Button>
+          <Button variant="ghost" size="sm" onClick={() => setRenaming(false)}>
+            Annuler
+          </Button>
+        </form>
+      ) : (
+        <h1 className="device-head__name">
+          <button className="device-head__rename" onClick={() => setRenaming(true)} title="Renommer ce PC">
+            {device.name}
+          </button>
+        </h1>
+      )}
+      <div className="device-head__meta">
+        <StatusDot status={status} label={label} />
+        <span className="device-head__facts">
+          {device.agentVersion && <>Agent v{device.agentVersion} · </>}ajouté le{" "}
+          {new Date(device.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} ·{" "}
+          <button
+            className="text-action"
+            onClick={recalibrate}
+            title="Lève les blocages posés par l'agent, si une règle a coincé à tort. Les limites encore dépassées se réappliquent."
+          >
+            Recalibrer l'agent
+          </button>
+          {recal === "sent" && (
+            <span className="flash flash--ok" role="status">
+              {isOnline(device) ? "blocages levés" : "partira à la reconnexion"}
+            </span>
+          )}
+          {recal === "error" && (
+            <span className="flash flash--error" role="status">
+              échec, réessayez
+            </span>
+          )}
+        </span>
+      </div>
+    </header>
+  );
 }

@@ -1,0 +1,10 @@
+:root{
+--ease-press:cubic-bezier(.2,.7,.3,1);/* @kind other */
+--ease-release:cubic-bezier(.34,1.9,.6,1);/* @kind other */  /* léger rebond au relâchement */
+--ease-out:cubic-bezier(.22,1,.36,1);/* @kind other */
+--dur-press:70ms;/* @kind other */
+--dur-release:280ms;/* @kind other */
+--dur-ui:180ms;/* @kind other */
+--logo-step:170ms;/* @kind other */   /* délai entre Ctrl, Alt, Bro dans l'animation signature */
+}
+@media (prefers-reduced-motion:reduce){:root{--ease-release:var(--ease-out);/* @kind other */--dur-release:120ms}}
