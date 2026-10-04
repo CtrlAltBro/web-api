@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { App } from "./DeviceDetail";
 import { ConfirmButton } from "./components/ConfirmButton";
 import { Loader } from "./components/Loader";
@@ -28,6 +29,7 @@ function toExeName(input: string, apps: App[]) {
 }
 
 export default function Applications({ deviceId, apps }: { deviceId: string; apps: App[] | null }) {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [mode, setMode] = useState<"limit" | "block">("limit");
   const [target, setTarget] = useState("");
@@ -107,18 +109,18 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
     <section className="block" aria-labelledby="apps-title">
       <div className="block__head">
         <h2 id="apps-title" className="block__title">
-          Applications
+          {t("apps.title")}
         </h2>
         <p className="block__lede">
-          Une application bloquée affiche un écran explicatif. Une copie renommée est reconnue et bloquée aussi.
+          {t("apps.lede")}
         </p>
       </div>
 
       <form className="rule-form" onSubmit={onAdd}>
         <Input
           ref={targetRef}
-          label="Application"
-          placeholder="Minecraft, chrome.exe…"
+          label={t("apps.appLabel")}
+          placeholder={t("apps.appPlaceholder")}
           list={`apps-${deviceId}`}
           value={target}
           onChange={(e) => setTarget(e.target.value)}
@@ -132,7 +134,7 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
             </option>
           ))}
         </datalist>
-        <div className="rule-form__mode" role="radiogroup" aria-label="Type de règle">
+        <div className="rule-form__mode" role="radiogroup" aria-label={t("apps.modeAria")}>
           {(["limit", "block"] as const).map((m) => (
             <Key
               key={m}
@@ -144,14 +146,14 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
               role="radio"
               aria-checked={mode === m}
             >
-              {m === "limit" ? "Limiter" : "Bloquer"}
+              {t(m === "limit" ? "apps.limit" : "apps.block")}
             </Key>
           ))}
         </div>
         {mode === "limit" && (
-          <Input label="Par jour" name="minutes" type="number" min={1} max={1440} defaultValue={60} suffix="min" required className="rule-form__minutes" />
+          <Input label={t("apps.perDay")} name="minutes" type="number" min={1} max={1440} defaultValue={60} suffix="min" required className="rule-form__minutes" />
         )}
-        <Button type="submit">Ajouter la règle</Button>
+        <Button type="submit">{t("apps.add")}</Button>
       </form>
 
       {error && (
@@ -163,7 +165,7 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
       {rules === null ? (
         !error && <Loader />
       ) : rules.length === 0 ? (
-        <p className="empty-line">Aucune règle pour l'instant : toutes les applications sont libres, dans la limite des horaires.</p>
+        <p className="empty-line">{t("apps.none")}</p>
       ) : (
         <>
           <ul className="rules">
@@ -177,7 +179,7 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
                     <span className="rule__exe">{rule.target}</span>
                   </div>
                   {rule.mode === "block" ? (
-                    <KeyTag status="alert">Bloquée</KeyTag>
+                    <KeyTag status="alert">{t("apps.blocked")}</KeyTag>
                   ) : editing === rule.id ? (
                     <form className="rule__edit" onSubmit={(e) => onLimit(e, rule)}>
                       <Input
@@ -186,8 +188,8 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
                         min={1}
                         max={1440}
                         defaultValue={rule.dailyLimitMinutes ?? 60}
-                        suffix="min / jour"
-                        aria-label={`Limite quotidienne pour ${label(rule)}`}
+                        suffix={t("apps.minPerDay")}
+                        aria-label={t("apps.limitAria", { name: label(rule) })}
                         autoFocus
                         onKeyDown={(e) => e.key === "Escape" && setEditing(null)}
                       />
@@ -197,9 +199,9 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
                     </form>
                   ) : (
                     <div className="rule__limit">
-                      <KeyTag status={over ? "alert" : undefined}>{formatMinutes(rule.dailyLimitMinutes ?? 0)} / jour</KeyTag>
+                      <KeyTag status={over ? "alert" : undefined}>{t("apps.perDayValue", { time: formatMinutes(rule.dailyLimitMinutes ?? 0) })}</KeyTag>
                       <span className="rule__used" data-over={over}>
-                        {over ? "Limite atteinte" : `${formatDuration(rule.usedTodaySeconds)} aujourd'hui`}
+                        {over ? t("apps.limitReached") : t("apps.usedToday", { time: formatDuration(rule.usedTodaySeconds) })}
                       </span>
                     </div>
                   )}
@@ -207,17 +209,17 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
                     {rule.mode === "limit" && editing !== rule.id && (
                       <>
                         <Button variant="ghost" size="sm" onClick={() => setEditing(rule.id)}>
-                          Modifier
+                          {t("common.edit")}
                         </Button>
                         {rule.usedTodaySeconds > 0 && (
-                          <ConfirmButton confirm="Remettre à zéro ?" onConfirm={() => resetUsage(rule.target)}>
-                            Remettre à zéro
+                          <ConfirmButton confirm={t("apps.resetConfirm")} onConfirm={() => resetUsage(rule.target)}>
+                            {t("apps.reset")}
                           </ConfirmButton>
                         )}
                       </>
                     )}
-                    <ConfirmButton confirm="Supprimer ?" onConfirm={() => remove(rule)}>
-                      Supprimer
+                    <ConfirmButton confirm={t("apps.deleteConfirm")} onConfirm={() => remove(rule)}>
+                      {t("common.delete")}
                     </ConfirmButton>
                   </div>
                 </li>
@@ -226,10 +228,10 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
           </ul>
           {rules.filter((r) => r.mode === "limit" && r.usedTodaySeconds > 0).length > 1 && (
             <div className="rules__footer">
-              <ConfirmButton confirm="Remettre tout le temps d'aujourd'hui à zéro ?" onConfirm={() => resetUsage()}>
-                Tout remettre à zéro
+              <ConfirmButton confirm={t("apps.resetAllConfirm")} onConfirm={() => resetUsage()}>
+                {t("apps.resetAll")}
               </ConfirmButton>
-              <span className="muted">L'historique du temps d'écran est conservé.</span>
+              <span className="muted">{t("apps.historyKept")}</span>
             </div>
           )}
         </>
@@ -237,11 +239,11 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
 
       <div className="inventory">
         {apps === null ? null : apps.length === 0 ? (
-          <p className="empty-line">L'agent n'a pas encore envoyé la liste des applications installées.</p>
+          <p className="empty-line">{t("apps.noInventory")}</p>
         ) : (
           <>
             <Button variant="ghost" size="sm" onClick={() => setInventoryOpen(!inventoryOpen)} aria-expanded={inventoryOpen}>
-              {inventoryOpen ? "Masquer les" : "Voir les"} {apps.length} applications installées
+              {t(inventoryOpen ? "apps.hideInventory" : "apps.showInventory", { count: apps.length })}
             </Button>
             <Reveal open={inventoryOpen}>
               <ul className="inventory__list">
@@ -253,11 +255,11 @@ export default function Applications({ deviceId, apps }: { deviceId: string; app
                       <span className="inventory__exe">{a.exeName}</span>
                       {rule ? (
                         <span className="inventory__rule">
-                          {rule.mode === "block" ? "Bloquée" : `${formatMinutes(rule.dailyLimitMinutes ?? 0)} / jour`}
+                          {rule.mode === "block" ? t("apps.blocked") : t("apps.perDayValue", { time: formatMinutes(rule.dailyLimitMinutes ?? 0) })}
                         </span>
                       ) : (
-                        <button className="text-action" onClick={() => prefill(a)} aria-label={`Créer une règle pour ${a.name}`}>
-                          Règle
+                        <button className="text-action" onClick={() => prefill(a)} aria-label={t("apps.ruleFor", { name: a.name })}>
+                          {t("apps.ruleShortcut")}
                         </button>
                       )}
                     </li>

@@ -1,20 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Reveal } from "./components/Reveal";
 import { Button, KeyTag } from "./ds";
 import { since, timeAgo, type Device } from "./lib/device";
+import { locale } from "./i18n";
 
 export type TamperEvent = { id: string; type: string; detail: string | null; occurredAt: string };
-
-const EVENT_LABELS: Record<string, string> = {
-  app_killed: "App de contrôle fermée de force",
-  service_restarted: "Service redémarré anormalement",
-  clock_changed: "Heure du PC modifiée",
-  timezone_changed: "Fuseau horaire modifié",
-  pipe_spoof: "Tentative d'usurpation de l'app",
-  safe_mode: "Démarrage en mode sans échec",
-  uninstall: "Désinstallation de CtrlAltBro",
-  app_renamed: "Application renommée pour contourner un blocage",
-};
 
 const VISIBLE = 3;
 
@@ -31,6 +22,9 @@ function readSeen(deviceId: string): string[] {
 // Bypass attempts and a silent agent are exceptional: they open the page as banners,
 // until the parent says "Compris". The full log stays one click away.
 export default function Alerts({ device, events }: { device: Device; events: TamperEvent[] | null }) {
+  const { t, i18n } = useTranslation();
+  const label = (type: string) => (i18n.exists(`alerts.events.${type}`) ? t(`alerts.events.${type}` as "alerts.events.uninstall") : type);
+  const silent = device.silentSince ? since(device.silentSince) : null;
   const [seen, setSeen] = useState(() => readSeen(device.id));
   const [logOpen, setLogOpen] = useState(false);
   const fresh = (events ?? []).filter((e) => !seen.includes(e.id));
@@ -45,40 +39,37 @@ export default function Alerts({ device, events }: { device: Device; events: Tam
 
   return (
     <div className="alerts">
-      {device.silentSince && (
+      {silent && (
         <div className="banner" role="alert">
-          <KeyTag status="alert">Ne répond plus</KeyTag>
+          <KeyTag status="alert">{t("alerts.notResponding")}</KeyTag>
           <div className="banner__body">
             <p className="banner__title">
-              Plus de nouvelles depuis {since(device.silentSince)}, alors que l'enfant était connecté
+              {t("alerts.silentTitle", { since: silent.text, context: silent.date ? "date" : undefined })}
             </p>
-            <p className="banner__text">
-              Le PC ne s'est ni éteint ni mis en veille normalement. CtrlAltBro a peut-être été contourné (mode sans échec,
-              extinction forcée, service arrêté…).
-            </p>
+            <p className="banner__text">{t("alerts.silentText")}</p>
           </div>
         </div>
       )}
 
       {fresh.slice(0, VISIBLE).map((e) => (
         <div key={e.id} className="banner" role="alert">
-          <KeyTag status="alert">Contournement</KeyTag>
+          <KeyTag status="alert">{t("alerts.bypass")}</KeyTag>
           <div className="banner__body">
             <p className="banner__title">
-              {EVENT_LABELS[e.type] ?? e.type}{" "}
-              <span className="banner__when" title={new Date(e.occurredAt).toLocaleString("fr-FR")}>
+              {label(e.type)}{" "}
+              <span className="banner__when" title={new Date(e.occurredAt).toLocaleString(locale())}>
                 · {timeAgo(e.occurredAt)}
               </span>
             </p>
             {(e.detail || e.type === "app_renamed") && (
               <p className="banner__text">
                 {e.detail}
-                {e.type === "app_renamed" && " Le blocage a été réappliqué."}
+                {e.type === "app_renamed" && ` ${t("alerts.reapplied")}`}
               </p>
             )}
           </div>
           <Button variant="ghost" size="sm" onClick={() => dismiss([e.id])}>
-            Compris
+            {t("alerts.gotIt")}
           </Button>
         </div>
       ))}
@@ -87,11 +78,11 @@ export default function Alerts({ device, events }: { device: Device; events: Tam
         <div className="alerts__more">
           {fresh.length > VISIBLE && (
             <Button variant="ghost" size="sm" onClick={() => dismiss(fresh.map((e) => e.id))}>
-              Tout marquer comme vu ({fresh.length})
+              {t("alerts.markAll", { count: fresh.length })}
             </Button>
           )}
           <Button variant="ghost" size="sm" aria-expanded={logOpen} onClick={() => setLogOpen(!logOpen)}>
-            {logOpen ? "Masquer" : "Voir"} l'historique des alertes ({events?.length})
+            {t(logOpen ? "alerts.hideLog" : "alerts.showLog", { count: events?.length ?? 0 })}
           </Button>
         </div>
       )}
@@ -101,10 +92,10 @@ export default function Alerts({ device, events }: { device: Device; events: Tam
           {(events ?? []).map((e) => (
             <li key={e.id} className="log__row">
               <span>
-                <strong>{EVENT_LABELS[e.type] ?? e.type}</strong>
+                <strong>{label(e.type)}</strong>
                 {e.detail && <span className="muted"> {e.detail}</span>}
               </span>
-              <span className="log__when" title={new Date(e.occurredAt).toLocaleString("fr-FR")}>
+              <span className="log__when" title={new Date(e.occurredAt).toLocaleString(locale())}>
                 {timeAgo(e.occurredAt)}
               </span>
             </li>

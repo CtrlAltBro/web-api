@@ -1,3 +1,6 @@
+import i18n, { locale } from "../i18n";
+import { clockTime } from "./format";
+
 export type Device = {
   id: string;
   name: string;
@@ -26,38 +29,45 @@ export function isOnline(d: Device) {
 // The device's state for a StatusDot: kind + a label that says it in words.
 export function deviceStatus(d: Device): { status: "online" | "alert" | "offline"; label: string } {
   if (isOnline(d)) {
-    if (!d.health) return { status: "online", label: "En ligne" };
-    if (!d.health.childSignedIn) return { status: "online", label: "En ligne, aucun enfant connecté" };
-    return {
-      status: "online",
-      label: d.health.appConnected ? "En ligne, session de l'enfant ouverte" : "En ligne, session ouverte mais app inactive",
-    };
+    if (!d.health) return { status: "online", label: i18n.t("status.online") };
+    if (!d.health.childSignedIn) return { status: "online", label: i18n.t("status.onlineNoChild") };
+    return { status: "online", label: i18n.t(d.health.appConnected ? "status.onlineChild" : "status.onlineAppIdle") };
   }
-  if (d.silentSince) return { status: "alert", label: `Ne répond plus depuis ${since(d.silentSince)}` };
-  if (!d.lastSeenAt) return { status: "offline", label: "Jamais connecté" };
-  return { status: "offline", label: `Hors ligne depuis ${clock(d.lastSeenAt)}` };
+  if (d.silentSince) {
+    const { text, date } = since(d.silentSince);
+    return { status: "alert", label: i18n.t("status.silent", { since: text, context: date ? "date" : undefined }) };
+  }
+  if (!d.lastSeenAt) return { status: "offline", label: i18n.t("status.never") };
+  const { text, date } = clock(d.lastSeenAt);
+  return { status: "offline", label: i18n.t("status.offline", { when: text, context: date ? "date" : undefined }) };
 }
 
-// "25 min", "3 h", "le 30/09".
-export function since(iso: string) {
-  return timeAgo(iso).replace(/^il y a /, "");
+const shortDate = (d: Date) => d.toLocaleDateString(locale(), { day: "numeric", month: "short" });
+
+// How long ago, as a duration ("25 min", "3 h") or, past a day, a date.
+export function since(iso: string): { text: string; date: boolean } {
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return { text: i18n.t("time.aMoment"), date: false };
+  if (s < 3600) return { text: i18n.t("duration.minutes", { m: Math.floor(s / 60) }), date: false };
+  if (s < 86_400) return { text: i18n.t("duration.hours", { h: Math.floor(s / 3600) }), date: false };
+  return { text: shortDate(new Date(iso)), date: true };
 }
 
-// "18:42" today, "hier à 18:42", or "le 30 sept.".
-export function clock(iso: string) {
+// "18:42" today, "yesterday at 18:42", or a date.
+export function clock(iso: string): { text: string; date: boolean } {
   const d = new Date(iso);
   const now = new Date();
-  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  if (d.toDateString() === now.toDateString()) return time;
+  const time = clockTime(d);
+  if (d.toDateString() === now.toDateString()) return { text: time, date: false };
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return `hier à ${time}`;
-  return `le ${d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`;
+  if (d.toDateString() === yesterday.toDateString()) return { text: i18n.t("time.yesterdayAt", { time }), date: false };
+  return { text: shortDate(d), date: true };
 }
 
 export function timeAgo(iso: string) {
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "à l'instant";
-  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
-  if (s < 86_400) return `il y a ${Math.floor(s / 3600)} h`;
-  return `le ${new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}`;
+  if (s < 60) return i18n.t("time.justNow");
+  if (s < 3600) return i18n.t("time.minutesAgo", { count: Math.floor(s / 60) });
+  if (s < 86_400) return i18n.t("time.hoursAgo", { count: Math.floor(s / 3600) });
+  return i18n.t("time.onDate", { date: shortDate(new Date(iso)) });
 }

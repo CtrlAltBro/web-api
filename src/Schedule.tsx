@@ -1,9 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import type { ScheduleState } from "./DeviceDetail";
 import { Loader } from "./components/Loader";
 import { Reveal } from "./components/Reveal";
 import { Button, Input, Switch } from "./ds";
 import { api, ok } from "./lib/api";
+import i18n from "./i18n";
 import { formatMinutes, nowHHMM, toMinutes } from "./lib/format";
 
 type Window = { from: string; to: string };
@@ -12,27 +14,20 @@ type DayKey = "0" | "1" | "2" | "3" | "4" | "5" | "6";
 export type Sched = { days: Partial<Record<DayKey, Day>> };
 
 // getDay(): 0 = Sunday. Shown Monday-first.
-const DAYS: { key: DayKey; label: string }[] = [
-  { key: "1", label: "Lundi" },
-  { key: "2", label: "Mardi" },
-  { key: "3", label: "Mercredi" },
-  { key: "4", label: "Jeudi" },
-  { key: "5", label: "Vendredi" },
-  { key: "6", label: "Samedi" },
-  { key: "0", label: "Dimanche" },
-];
+const DAYS: DayKey[] = ["1", "2", "3", "4", "5", "6", "0"];
 const MAX_WINDOWS = 6;
 const pct = (hhmm: string) => `${(toMinutes(hhmm) / 1440) * 100}%`;
 
 function summary(day: Day | null) {
-  if (!day) return "Sans restriction";
-  if (day.maxMinutes === 0) return "Journée sans écran";
-  const hours = day.windows.length ? day.windows.map((w) => `${w.from} – ${w.to}`).join(", ") : "Toute la journée";
-  return day.maxMinutes === null ? hours : `${hours} · ${formatMinutes(day.maxMinutes)} max`;
+  if (!day) return i18n.t("schedule.noRestriction");
+  if (day.maxMinutes === 0) return i18n.t("schedule.noScreen");
+  const hours = day.windows.length ? day.windows.map((w) => `${w.from} – ${w.to}`).join(", ") : i18n.t("schedule.allDay");
+  return day.maxMinutes === null ? hours : `${hours} · ${i18n.t("schedule.max", { time: formatMinutes(day.maxMinutes) })}`;
 }
 
 // The week at a glance as a timeline; one day opens at a time to be edited.
 export default function Schedule({ deviceId, sched, onSaved }: { deviceId: string; sched: ScheduleState | null; onSaved: () => Promise<void> }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState<{ key: DayKey; day: Day | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -76,11 +71,10 @@ export default function Schedule({ deviceId, sched, onSaved }: { deviceId: strin
     <section className="block" aria-labelledby="schedule-title">
       <div className="block__head">
         <h2 id="schedule-title" className="block__title">
-          Horaires
+          {t("schedule.title")}
         </h2>
         <p className="block__lede">
-          Hors de la plage, ou une fois le temps max atteint, la session se verrouille. Sans plage, seul le temps max
-          compte ; 0 min bloque la journée.
+          {t("schedule.lede")}
         </p>
       </div>
 
@@ -91,22 +85,21 @@ export default function Schedule({ deviceId, sched, onSaved }: { deviceId: strin
           <div className="week-plan__axis" aria-hidden="true">
             <span />
             <span className="week-plan__hours">
-              <span>0 h</span>
-              <span>6 h</span>
-              <span>12 h</span>
-              <span>18 h</span>
-              <span>24 h</span>
+              {[0, 6, 12, 18, 24].map((h) => (
+                <span key={h}>{t("schedule.hour", { h })}</span>
+              ))}
             </span>
           </div>
-          {DAYS.map(({ key, label }) => {
+          {DAYS.map((key) => {
             const open = editing?.key === key;
             const day = open ? editing.day : (sched.schedule.days[key] ?? null);
             const isToday = key === today;
             return (
               <div key={key} className="plan-day" data-open={open}>
                 <div className="plan-day__row">
-                  <span className="plan-day__name" data-today={isToday}>
-                    {label}
+                  <span className="plan-day__name">
+                    {t(`schedule.days.${key}`)}
+                    {isToday && <span className="plan-day__today">{t("schedule.todayTag")}</span>}
                   </span>
                   <span className="plan-day__track" aria-hidden="true">
                     {day && day.maxMinutes !== 0 && day.windows.length === 0 && <span className="plan-day__all" />}
@@ -119,15 +112,15 @@ export default function Schedule({ deviceId, sched, onSaved }: { deviceId: strin
                           style={{ left: pct(w.from), width: `calc(${pct(w.to)} - ${pct(w.from)})` } as CSSProperties}
                         />
                       ))}
-                    {isToday && <span className="plan-day__now" style={{ left: pct(now) }} title={`Maintenant, ${now}`} />}
+                    {isToday && <span className="plan-day__now" style={{ left: pct(now) }} title={t("schedule.now", { time: now })} />}
                   </span>
                   <span className="plan-day__summary">{summary(day)}</span>
                   <Button variant="ghost" size="sm" onClick={() => toggle(key)} aria-expanded={open} disabled={saving}>
-                    {open ? (saving ? "…" : "OK") : "Modifier"}
+                    {open ? (saving ? "…" : t("common.ok")) : t("common.edit")}
                   </Button>
                 </div>
                 <Reveal open={open}>
-                  {open && <DayEditor label={label} day={editing.day} onChange={draft} error={error} onCancel={() => (setEditing(null), setError(null))} />}
+                  {open && <DayEditor dayKey={key} day={editing.day} onChange={draft} error={error} onCancel={() => (setEditing(null), setError(null))} />}
                 </Reveal>
               </div>
             );
@@ -138,14 +131,15 @@ export default function Schedule({ deviceId, sched, onSaved }: { deviceId: strin
   );
 }
 
-function DayEditor({ label, day, onChange, error, onCancel }: { label: string; day: Day | null; onChange: (d: Day | null) => void; error: string | null; onCancel: () => void }) {
+function DayEditor({ dayKey, day, onChange, error, onCancel }: { dayKey: DayKey; day: Day | null; onChange: (d: Day | null) => void; error: string | null; onCancel: () => void }) {
+  const { t } = useTranslation();
   const setWindow = (i: number, w: Partial<Window>) =>
     day && onChange({ ...day, windows: day.windows.map((x, j) => (j === i ? { ...x, ...w } : x)) });
 
   return (
     <div className="day-editor">
       <Switch
-        label={`Encadrer le ${label.toLowerCase()}`}
+        label={t("schedule.restrict", { day: t(`schedule.dayIn.${dayKey}`) })}
         checked={day !== null}
         onChange={(on) => onChange(on ? { windows: [{ from: "16:30", to: "21:00" }], maxMinutes: 120 } : null)}
       />
@@ -154,10 +148,10 @@ function DayEditor({ label, day, onChange, error, onCancel }: { label: string; d
           <div className="day-editor__windows">
             {day.windows.map((w, i) => (
               <div key={i} className="day-editor__window">
-                <Input label="De" type="time" value={w.from} onChange={(e) => setWindow(i, { from: e.target.value })} required />
-                <Input label="À" type="time" value={w.to} onChange={(e) => setWindow(i, { to: e.target.value })} required />
+                <Input label={t("schedule.from")} type="time" value={w.from} onChange={(e) => setWindow(i, { from: e.target.value })} required />
+                <Input label={t("schedule.to")} type="time" value={w.to} onChange={(e) => setWindow(i, { to: e.target.value })} required />
                 <Button variant="ghost" size="sm" onClick={() => onChange({ ...day, windows: day.windows.filter((_, j) => j !== i) })}>
-                  Retirer
+                  {t("schedule.remove")}
                 </Button>
               </div>
             ))}
@@ -171,19 +165,19 @@ function DayEditor({ label, day, onChange, error, onCancel }: { label: string; d
                   onChange({ ...day, windows: [...day.windows, { from, to: from < "21:00" ? "21:00" : "23:00" }] });
                 }}
               >
-                {day.windows.length ? "+ Ajouter une plage" : "+ Limiter à une plage horaire"}
+                {t(day.windows.length ? "schedule.addWindow" : "schedule.firstWindow")}
               </Button>
             )}
           </div>
           <Input
-            label="Temps max"
+            label={t("schedule.maxLabel")}
             type="number"
             min={0}
             max={1440}
             step={15}
             suffix="min"
-            placeholder="illimité"
-            hint="Vide : pas de plafond."
+            placeholder={t("schedule.unlimited")}
+            hint={t("schedule.maxHint")}
             value={day.maxMinutes ?? ""}
             onChange={(e) => onChange({ ...day, maxMinutes: e.target.value === "" ? null : Number(e.target.value) })}
             className="day-editor__max"
@@ -196,7 +190,7 @@ function DayEditor({ label, day, onChange, error, onCancel }: { label: string; d
         </p>
       )}
       <Button variant="ghost" size="sm" onClick={onCancel} className="day-editor__cancel">
-        Annuler
+        {t("common.cancel")}
       </Button>
     </div>
   );

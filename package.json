@@ -15,9 +15,12 @@
     "@hono/zod-validator": "^0.9.1",
     "better-auth": "^1.7.5",
     "hono": "^4.13.8",
+    "i18next": "^26.4.2",
+    "i18next-browser-languagedetector": "^8.2.1",
     "pg": "^8.23.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-i18next": "^17.0.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {
