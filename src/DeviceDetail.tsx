@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import Alerts, { type TamperEvent } from "./Alerts";
 import Applications from "./Applications";
 import Controls, { type Command, type CommandInput } from "./Controls";
@@ -8,7 +9,7 @@ import Web from "./Web";
 import { Button, Input, StatusDot } from "./ds";
 import { api, ok } from "./lib/api";
 import { deviceStatus, isOnline, type Device } from "./lib/device";
-import { REFRESH_MS } from "./lib/format";
+import { REFRESH_MS, longDate } from "./lib/format";
 import { usePoll } from "./lib/poll";
 
 export type App = { exeName: string; name: string; path: string | null; lastSeenAt: string };
@@ -17,6 +18,7 @@ export type ScheduleState = { schedule: Sched; usedTodaySeconds: number; extraMi
 // One PC: today first (time used, quick actions), then the standing rules
 // (hours, applications, web) in the order a parent tunes them.
 export default function DeviceDetail({ device, onRenamed }: { device: Device; onRenamed: () => void }) {
+  const { t } = useTranslation();
   const [commands, setCommands] = useState<Command[] | null>(null);
   const [apps, setApps] = useState<App[] | null>(null);
   const [sched, setSched] = useState<ScheduleState | null>(null);
@@ -69,7 +71,7 @@ export default function DeviceDetail({ device, onRenamed }: { device: Device; on
       <Header device={device} send={send} onRenamed={onRenamed} />
       <Alerts device={device} events={events} />
 
-      <section className="today" aria-label="Aujourd'hui">
+      <section className="today" aria-label={t("device.todayRegion")}>
         <Today device={device} sched={sched} />
         <Controls device={device} apps={apps ?? []} commands={commands} sched={sched} send={send} onGranted={loadSchedule} />
       </section>
@@ -82,6 +84,7 @@ export default function DeviceDetail({ device, onRenamed }: { device: Device; on
 }
 
 function Header({ device, send, onRenamed }: { device: Device; send: (c: CommandInput) => Promise<void>; onRenamed: () => void }) {
+  const { t } = useTranslation();
   const { status, label } = deviceStatus(device);
   const [renaming, setRenaming] = useState(false);
   const [recal, setRecal] = useState<"idle" | "sent" | "error">("idle");
@@ -119,27 +122,27 @@ function Header({ device, send, onRenamed }: { device: Device; send: (c: Command
   return (
     <header className="device-head">
       <a className="back-link" href="#">
-        ← Mes PC
+        {t("devices.back")}
       </a>
       {renaming ? (
         <form className="rename" onSubmit={rename}>
           <Input
             name="name"
-            aria-label="Nom du PC"
+            aria-label={t("device.nameLabel")}
             defaultValue={device.name}
             maxLength={100}
             autoFocus
             error={error}
             onKeyDown={(e) => e.key === "Escape" && setRenaming(false)}
           />
-          <Button type="submit">Renommer</Button>
+          <Button type="submit">{t("device.rename")}</Button>
           <Button variant="ghost" size="sm" onClick={() => setRenaming(false)}>
-            Annuler
+            {t("common.cancel")}
           </Button>
         </form>
       ) : (
         <h1 className="device-head__name">
-          <button className="device-head__rename" onClick={() => setRenaming(true)} title="Renommer ce PC">
+          <button className="device-head__rename" onClick={() => setRenaming(true)} title={t("device.renameTitle")}>
             {device.name}
           </button>
         </h1>
@@ -147,23 +150,23 @@ function Header({ device, send, onRenamed }: { device: Device; send: (c: Command
       <div className="device-head__meta">
         <StatusDot status={status} label={label} />
         <span className="device-head__facts">
-          {device.agentVersion && <>Agent v{device.agentVersion} · </>}ajouté le{" "}
-          {new Date(device.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} ·{" "}
+          {device.agentVersion && <>{t("common.agentVersion", { version: device.agentVersion })} · </>}
+          {t("common.addedOn", { date: longDate(new Date(device.createdAt)) })} ·{" "}
           <button
             className="text-action"
             onClick={recalibrate}
-            title="Lève les blocages posés par l'agent, si une règle a coincé à tort. Les limites encore dépassées se réappliquent."
+            title={t("device.recalibrateHint")}
           >
-            Recalibrer l'agent
+            {t("device.recalibrate")}
           </button>
           {recal === "sent" && (
             <span className="flash flash--ok" role="status">
-              {isOnline(device) ? "blocages levés" : "partira à la reconnexion"}
+              {t(isOnline(device) ? "device.recalDone" : "device.recalQueued")}
             </span>
           )}
           {recal === "error" && (
             <span className="flash flash--error" role="status">
-              échec, réessayez
+              {t("device.recalFailed")}
             </span>
           )}
         </span>

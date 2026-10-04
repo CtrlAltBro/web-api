@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { App, ScheduleState } from "./DeviceDetail";
 import { todayRules } from "./Today";
 import { Button, Input, Key } from "./ds";
@@ -21,13 +22,6 @@ export type CommandInput =
   | { type: "lock_session" }
   | { type: "recalibrate" };
 
-const COMMAND_LABELS: Record<string, string> = {
-  show_message: "Message",
-  kill_app: "Fermeture",
-  lock_session: "Verrouillage",
-  recalibrate: "Recalibrage",
-};
-const STATUS_LABELS: Record<Command["status"], string> = { pending: "en attente", done: "fait", failed: "échec" };
 const RECENT = 5;
 
 // What a parent does right now, next to what is happening right now: extra time,
@@ -47,6 +41,7 @@ export default function Controls({
   send: (c: CommandInput) => Promise<void>;
   onGranted: () => void;
 }) {
+  const { t, i18n } = useTranslation();
   const [error, setError] = useState<{ zone: string; text: string } | null>(null);
   const [lockArmed, setLockArmed] = useState(false);
   const [allCommands, setAllCommands] = useState(false);
@@ -104,11 +99,11 @@ export default function Controls({
   return (
     <div className="controls">
       {!isOnline(device) && !device.silentSince && (
-        <p className="controls__offline">Le PC est hors ligne. Les commandes partiront dès qu'il se reconnecte.</p>
+        <p className="controls__offline">{t("controls.offline")}</p>
       )}
 
       <div className="control">
-        <h2 className="control__title">Donner du temps en plus</h2>
+        <h2 className="control__title">{t("controls.extraTitle")}</h2>
         <div className="control__keys">
           {[15, 30, 60].map((m) => (
             <Key key={m} tone="cream" size="sm" onClick={() => grant(m)} disabled={sched !== null && !capped}>
@@ -119,12 +114,12 @@ export default function Controls({
         {errorFor("grant") ? (
           <p className="form-error">{errorFor("grant")}</p>
         ) : sched && !capped ? (
-          <p className="control__hint">Pas de temps max aujourd'hui : il n'y a rien à prolonger.</p>
+          <p className="control__hint">{t("controls.extraNoCap")}</p>
         ) : (
           sched &&
           sched.extraMinutes > 0 && (
             <p className="control__hint" key={sched.extraMinutes}>
-              <span className="flash flash--ok">{formatMinutes(sched.extraMinutes)} accordées aujourd'hui.</span>
+              <span className="flash flash--ok">{t("controls.extraGranted", { time: formatMinutes(sched.extraMinutes) })}</span>
             </p>
           )
         )}
@@ -132,33 +127,33 @@ export default function Controls({
 
       <form className="control" onSubmit={onMessage}>
         <h2 className="control__title">
-          <label htmlFor="message">Lui écrire</label>
+          <label htmlFor="message">{t("controls.messageTitle")}</label>
         </h2>
         <div className="control__inline">
-          <Input id="message" name="text" placeholder="On passe à table !" maxLength={500} required error={errorFor("message")} />
-          <Button type="submit">Envoyer</Button>
+          <Input id="message" name="text" placeholder={t("controls.messagePlaceholder")} maxLength={500} required error={errorFor("message")} />
+          <Button type="submit">{t("controls.send")}</Button>
         </div>
       </form>
 
       <div className="control">
         <Key tone="cream" size="md" block onClick={onLock} className={lockArmed ? "lock-key is-armed" : "lock-key"} aria-live="polite">
-          {lockArmed ? "Confirmer le verrouillage" : "Verrouiller la session maintenant"}
+          {t(lockArmed ? "controls.lockConfirm" : "controls.lock")}
         </Key>
         {errorFor("lock") ? (
           <p className="form-error">{errorFor("lock")}</p>
         ) : (
-          <p className="control__hint">Les applications restent ouvertes : rien de ce qui est en cours n'est perdu.</p>
+          <p className="control__hint">{t("controls.lockHint")}</p>
         )}
       </div>
 
       <form className="control" onSubmit={onKill}>
         <h2 className="control__title">
-          <label htmlFor="kill">Fermer une application</label>
+          <label htmlFor="kill">{t("controls.killTitle")}</label>
         </h2>
         <div className="control__inline">
           <Input id="kill" name="exeName" placeholder="minecraft.exe" list={`kill-apps-${device.id}`} mono required error={errorFor("kill")} />
           <Button type="submit" variant="secondary">
-            Fermer
+            {t("controls.kill")}
           </Button>
         </div>
         <datalist id={`kill-apps-${device.id}`}>
@@ -168,21 +163,21 @@ export default function Controls({
             </option>
           ))}
         </datalist>
-        <p className="control__hint">Elle se ferme une fois, sans être bloquée. Pour l'empêcher de revenir, ajoutez une règle.</p>
+        <p className="control__hint">{t("controls.killHint")}</p>
       </form>
 
       {commands && commands.length > 0 && (
         <div className="history">
-          <h3 className="history__title">Dernières commandes</h3>
+          <h3 className="history__title">{t("controls.history")}</h3>
           <ul>
             {shown!.map((c) => (
               <li key={c.id} className="history__row">
                 <span className="history__what">
-                  <strong>{COMMAND_LABELS[c.type] ?? c.type}</strong> <span className="muted">{describe(c)}</span>
+                  <strong>{i18n.exists(`controls.types.${c.type}`) ? t(`controls.types.${c.type}` as "controls.types.lock_session") : c.type}</strong> <span className="muted">{describe(c)}</span>
                   {c.error && <span className="history__error">{c.error}</span>}
                 </span>
                 <span className="history__when">
-                  <span className={`history__status history__status--${c.status}`}>{STATUS_LABELS[c.status]}</span> ·{" "}
+                  <span className={`history__status history__status--${c.status}`}>{t(`controls.statuses.${c.status}`)}</span> ·{" "}
                   {timeAgo(c.createdAt)}
                 </span>
               </li>
@@ -190,7 +185,7 @@ export default function Controls({
           </ul>
           {commands.length > RECENT && (
             <Button variant="ghost" size="sm" onClick={() => setAllCommands(!allCommands)} aria-expanded={allCommands}>
-              {allCommands ? "Voir moins" : `Voir les ${commands.length} dernières`}
+              {allCommands ? t("controls.showLess") : t("controls.showAll", { count: commands.length })}
             </Button>
           )}
         </div>

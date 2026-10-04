@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import type { ScheduleState } from "./DeviceDetail";
 import { Loader } from "./components/Loader";
 import { Reveal } from "./components/Reveal";
 import { Card } from "./ds";
+import i18n, { locale } from "./i18n";
 import { api, ok } from "./lib/api";
 import type { Device } from "./lib/device";
-import { REFRESH_MS, dayKey, formatDuration, formatMinutes, nowHHMM, toMinutes, tz } from "./lib/format";
+import { REFRESH_MS, dayKey, formatDuration, formatMinutes, nowHHMM, tz } from "./lib/format";
 import { usePoll } from "./lib/poll";
 
 type Usage = { day: string; app: string; exeName: string | null; seconds: number };
@@ -25,6 +27,7 @@ function lastDays() {
 // The headline of the page: how much screen time today, how much is left, and
 // where it went. The week's bars pick another day.
 export default function Today({ device, sched }: { device: Device; sched: ScheduleState | null }) {
+  const { t } = useTranslation();
   const days = useMemo(lastDays, []);
   const todayKey = days[DAYS - 1].key;
   const [usage, setUsage] = useState<Usage[] | null>(null);
@@ -66,9 +69,9 @@ export default function Today({ device, sched }: { device: Device; sched: Schedu
     const sorted = [...byApp].sort((a, b) => b[1] - a[1]);
     const top = sorted.slice(0, TOP_APPS);
     const rest = sorted.slice(TOP_APPS).reduce((sum, [, s]) => sum + s, 0);
-    if (rest > 0) top.push([`Autres (${sorted.length - TOP_APPS})`, rest]);
+    if (rest > 0) top.push([t("today.others", { count: sorted.length - TOP_APPS }), rest]);
     return top;
-  }, [usage, selected]);
+  }, [usage, selected, t]);
 
   const isToday = selected === todayKey;
   const selectedDate = days.find((d) => d.key === selected)!.date;
@@ -83,8 +86,8 @@ export default function Today({ device, sched }: { device: Device; sched: Schedu
         <div>
           <p className="today-card__day">
             {isToday
-              ? `Aujourd'hui, ${selectedDate.toLocaleDateString("fr-FR", { weekday: "long" })}`
-              : selectedDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+              ? t("today.heading", { weekday: selectedDate.toLocaleDateString(locale(), { weekday: "long" }) })
+              : selectedDate.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })}
           </p>
           <p className="today-card__total" aria-live="polite">
             {usage === null ? "…" : formatDuration(totals.get(selected) ?? 0)}
@@ -101,11 +104,11 @@ export default function Today({ device, sched }: { device: Device; sched: Schedu
         !error && <Loader />
       ) : (
         <>
-          <div className="week" role="group" aria-label="Temps d'écran des 7 derniers jours">
+          <div className="week" role="group" aria-label={t("today.weekAria")}>
             {days.map(({ key, date }, i) => {
               const seconds = totals.get(key) ?? 0;
-              const label = key === todayKey ? "Auj." : date.toLocaleDateString("fr-FR", { weekday: "short" });
-              const full = `${date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })} : ${formatDuration(seconds)}`;
+              const label = key === todayKey ? t("today.todayShort") : date.toLocaleDateString(locale(), { weekday: "short" });
+              const full = `${date.toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long" })} · ${formatDuration(seconds)}`;
               return (
                 <button
                   key={key}
@@ -131,17 +134,15 @@ export default function Today({ device, sched }: { device: Device; sched: Schedu
           </div>
           {partialWeek && (
             <p className="footnote">
-              Suivi depuis{" "}
               {dayKey(trackedSince) === todayKey
-                ? "aujourd'hui"
-                : `le ${trackedSince.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric" })}`}{" "}
-              : les jours précédents se rempliront au fil de la semaine.
+                ? t("today.trackedSinceToday")
+                : t("today.trackedSince", { date: trackedSince.toLocaleDateString(locale(), { weekday: "long", day: "numeric" }) })}
             </p>
           )}
 
           {apps.length === 0 ? (
             <p className="muted today-card__none">
-              {isToday ? "Rien d'enregistré aujourd'hui pour l'instant." : "Aucune utilisation enregistrée ce jour-là."}
+              {t(isToday ? "today.nothingToday" : "today.nothingThatDay")}
             </p>
           ) : (
             <ul className="usage" key={selected}>
@@ -200,25 +201,32 @@ function todayRules(sched: ScheduleState) {
 
 // What is left today, in words: the cap (with bonus) and the time window.
 function Allowance({ sched }: { sched: ScheduleState }) {
+  const { t } = useTranslation();
   const { day, allowed } = todayRules(sched);
   const remaining = allowed === null ? null : allowed - sched.usedTodaySeconds / 60;
   return (
     <div className="allowance">
       <p>
         {day === null ? (
-          <strong>Pas de restriction aujourd'hui</strong>
+          <strong>{t("today.noRestriction")}</strong>
         ) : allowed === null ? (
-          <strong>Pas de temps max aujourd'hui</strong>
+          <strong>{t("today.noCap")}</strong>
         ) : allowed === 0 ? (
-          <strong>Journée sans écran</strong>
+          <strong>{t("today.noScreenDay")}</strong>
         ) : remaining! <= 0 ? (
-          <>
-            <strong className="allowance__over">Temps écoulé</strong> sur {formatMinutes(allowed)}
-          </>
+          <Trans
+            i18nKey="today.timeUp"
+            values={{ total: formatMinutes(allowed) }}
+            components={{ b: <strong className="allowance__over" /> }}
+          />
         ) : (
           <>
-            <strong>Il reste {formatMinutes(remaining!)}</strong> sur {formatMinutes(allowed)}
-            {sched.extraMinutes > 0 && " (bonus compris)"}
+            <Trans
+              i18nKey="today.left"
+              values={{ left: formatMinutes(remaining!), total: formatMinutes(allowed) }}
+              components={{ b: <strong /> }}
+            />
+            {sched.extraMinutes > 0 && t("today.bonusIncluded")}
           </>
         )}
       </p>
@@ -231,13 +239,14 @@ function windowLine(windows: { from: string; to: string }[]) {
   const now = nowHHMM();
   const sorted = [...windows].sort((a, b) => a.from.localeCompare(b.from));
   const current = sorted.find((w) => w.from <= now && now < w.to);
-  if (current) return `Plage ${current.from} – ${current.to}, verrouillage à ${current.to}`;
+  if (current) return i18n.t("today.windowNow", current);
   const next = sorted.find((w) => now < w.from);
-  if (next) return `Verrouillé jusqu'à ${next.from} (plage ${next.from} – ${next.to})`;
-  return "Plus de plage aujourd'hui : la session reste verrouillée";
+  if (next) return i18n.t("today.windowNext", next);
+  return i18n.t("today.windowsOver");
 }
 
 function UsageBar({ sched }: { sched: ScheduleState }) {
+  const { t } = useTranslation();
   const { allowed } = todayRules(sched);
   if (!allowed) return null;
   const ratio = Math.min(1, sched.usedTodaySeconds / 60 / allowed);
@@ -245,7 +254,7 @@ function UsageBar({ sched }: { sched: ScheduleState }) {
     <div
       className="meter"
       role="progressbar"
-      aria-label="Temps utilisé aujourd'hui"
+      aria-label={t("today.meterAria")}
       aria-valuemin={0}
       aria-valuemax={allowed}
       aria-valuenow={Math.round(sched.usedTodaySeconds / 60)}
@@ -253,7 +262,7 @@ function UsageBar({ sched }: { sched: ScheduleState }) {
     >
       <span className="meter__fill" style={{ width: `${ratio * 100}%` }} />
       {sched.extraMinutes > 0 && (
-        <span className="meter__bonus" style={{ left: `${(1 - sched.extraMinutes / allowed) * 100}%` }} title="Bonus accordé" />
+        <span className="meter__bonus" style={{ left: `${(1 - sched.extraMinutes / allowed) * 100}%` }} title={t("today.bonusMark")} />
       )}
     </div>
   );

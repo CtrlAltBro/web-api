@@ -33,7 +33,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 ## Conventions
 
 - `npm run build` (typecheck + build) must pass. Keep comments minimal.
-- User-facing text in French, code in English.
+- Code in English. Dashboard text goes through i18next (`src/i18n/fr.ts`, `en.ts`, typed: a key missing in `en.ts` fails tsc); never hard-code UI text. The API still answers in French: `translateServerError` in `src/i18n/index.ts` maps its known messages.
 - Test the API end to end with the fake agent + curl, then clean test users from `dev` (`delete from "user" where email like 'e2e-%'`).
 
 ## Done
@@ -49,6 +49,7 @@ Codes and device tokens are stored as SHA-256 hashes only. Rules changes bump `d
 ## To do
 
 - [x] Dashboard redesign on the design system (night mode, key animations, rename device, inline confirmations instead of `confirm()`). Tamper alerts marked "Compris" are remembered per browser (localStorage), the API keeps them all.
+- [x] Dashboard in French and English (i18next + react-i18next + browser language detector): the parent's choice (FR / EN keys in the top bar and on sign-in, saved as `cab-lang` in localStorage) wins over the browser's preferred languages; anything but French falls back to English. Dates and times use `locale()`.
 - [ ] Dashboard: browsing history page (`GET /devices/:id/history` has no UI yet).
 - [x] Deploy (2026-10-01): https://ctrlaltbro-web.ctrlaltbro-web.workers.dev, on a neutral Cloudflare account. `npm run deploy` builds with `.env.production` (`CLOUDFLARE_ENV=production`), which selects the `production` env of `wrangler.jsonc`: same Worker name, KV `SIGNALS` and **Hyperdrive** (`ctrlaltbro-db`, created from the direct URL of the Neon `production` branch). Local dev keeps the top level (no Hyperdrive, direct `DATABASE_URL`). Secrets on the Worker: `DATABASE_URL`, `BETTER_AUTH_SECRET` (its own, not dev's), `BETTER_AUTH_URL`. Migrations on production: `node --env-file=.env.production.local db/migrate.mjs` (`.env.production.local`, gitignored, holds `DATABASE_URL` / `DATABASE_URL_UNPOOLED` of the production branch).
 - [ ] **CPU on the free plan (10 ms):** measured after Hyperdrive and skipping Better Auth on agent routes: `/ping` 1-12 ms (~6), `/sync` 8-37 ms (~20, a few per hour per PC), dashboard reads 12-60 ms, sign-in ~160 ms (scrypt). All succeeded so far (the limit is not enforced per request), but sign-in and dashboard reads exceed it. Next steps if requests start failing: PBKDF2 through WebCrypto for passwords, or Workers Paid ($5/mo, also lifts the KV write limit).

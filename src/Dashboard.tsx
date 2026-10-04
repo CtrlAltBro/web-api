@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import DeviceDetail from "./DeviceDetail";
 import { ConfirmButton } from "./components/ConfirmButton";
 import { KeyCode } from "./components/KeyCode";
+import { LanguageSwitch } from "./components/LanguageSwitch";
 import { Loader } from "./components/Loader";
 import { Button, Logo, StatusDot, Switch } from "./ds";
 import { api, ok } from "./lib/api";
 import { authClient } from "./lib/auth-client";
 import { deviceStatus, type Device } from "./lib/device";
+import { clockTime, longDate } from "./lib/format";
 import { usePoll } from "./lib/poll";
 
 type PairingCode = { code: string; expiresAt: string };
@@ -28,6 +31,7 @@ function useSelectedDevice() {
 }
 
 export default function Dashboard({ email, dark, onDark }: { email: string; dark: boolean; onDark: (dark: boolean) => void }) {
+  const { t } = useTranslation();
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectedId = useSelectedDevice();
@@ -50,11 +54,12 @@ export default function Dashboard({ email, dark, onDark }: { email: string; dark
       <header className="topbar">
         <Logo size={34} animate href="#" />
         <div className="topbar__end">
-          <Switch label="Mode nuit" checked={dark} onChange={onDark} />
+          <LanguageSwitch />
+          <Switch label={t("topbar.nightMode")} checked={dark} onChange={onDark} />
           <span className="topbar__account">
             <span className="topbar__email">{email}</span>
             <Button variant="ghost" size="sm" onClick={() => authClient.signOut()}>
-              Se déconnecter
+              {t("topbar.signOut")}
             </Button>
           </span>
         </div>
@@ -74,6 +79,7 @@ export default function Dashboard({ email, dark, onDark }: { email: string; dark
 }
 
 function DeviceList({ devices, error, reload }: { devices: Device[] | null; error: string | null; reload: () => Promise<void> }) {
+  const { t } = useTranslation();
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const count = useRef(devices?.length);
@@ -110,9 +116,9 @@ function DeviceList({ devices, error, reload }: { devices: Device[] | null; erro
     <section className="devices" aria-labelledby="devices-title">
       <div className="devices__head">
         <h1 id="devices-title" className="page-title">
-          Mes PC
+          {t("devices.title")}
         </h1>
-        {!empty && !pairing && devices && <Button onClick={addDevice}>Ajouter un PC</Button>}
+        {!empty && !pairing && devices && <Button onClick={addDevice}>{t("devices.add")}</Button>}
       </div>
 
       {(error || actionError) && (
@@ -126,11 +132,9 @@ function DeviceList({ devices, error, reload }: { devices: Device[] | null; erro
       ) : (
         empty && (
           <div className="devices__empty">
-            <p className="lede">Aucun PC pour l'instant.</p>
-            <p className="muted">
-              Installez CtrlAltBro sur le PC de l'enfant, puis saisissez dans l'installeur le code que vous obtiendrez ici.
-            </p>
-            <Button onClick={addDevice}>Obtenir un code d'appairage</Button>
+            <p className="lede">{t("devices.emptyTitle")}</p>
+            <p className="muted">{t("devices.emptyText")}</p>
+            <Button onClick={addDevice}>{t("devices.getCode")}</Button>
           </div>
         )
       )}
@@ -148,11 +152,11 @@ function DeviceList({ devices, error, reload }: { devices: Device[] | null; erro
                   <StatusDot status={status} label={label} />
                 </a>
                 <span className="device-row__meta">
-                  {d.agentVersion && <>Agent v{d.agentVersion} · </>}ajouté le{" "}
-                  {new Date(d.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  {d.agentVersion && <>{t("common.agentVersion", { version: d.agentVersion })} · </>}
+                  {t("common.addedOn", { date: longDate(new Date(d.createdAt)) })}
                 </span>
-                <ConfirmButton confirm={`Supprimer ${d.name} et ses données ?`} onConfirm={() => removeDevice(d)}>
-                  Supprimer
+                <ConfirmButton confirm={t("devices.confirmDelete", { name: d.name })} onConfirm={() => removeDevice(d)}>
+                  {t("common.delete")}
                 </ConfirmButton>
               </li>
             );
@@ -164,6 +168,7 @@ function DeviceList({ devices, error, reload }: { devices: Device[] | null; erro
 }
 
 function Pairing({ code, onRenew, onClose }: { code: PairingCode; onRenew: () => void; onClose: () => void }) {
+  const { t } = useTranslation();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
@@ -176,25 +181,22 @@ function Pairing({ code, onRenew, onClose }: { code: PairingCode; onRenew: () =>
     <div className="pairing" aria-live="polite">
       {expired ? (
         <>
-          <p className="lede">Ce code a expiré.</p>
+          <p className="lede">{t("pairing.expired")}</p>
           <div className="pairing__actions">
-            <Button onClick={onRenew}>Obtenir un nouveau code</Button>
+            <Button onClick={onRenew}>{t("pairing.renew")}</Button>
             <Button variant="ghost" size="sm" onClick={onClose}>
-              Fermer
+              {t("common.close")}
             </Button>
           </div>
         </>
       ) : (
         <>
-          <p className="pairing__label">Code d'appairage</p>
+          <p className="pairing__label">{t("pairing.label")}</p>
           <KeyCode code={code.code} />
-          <p className="muted">
-            À saisir dans l'installeur, sur le PC de l'enfant. Valable jusqu'à{" "}
-            {expires.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.
-          </p>
+          <p className="muted">{t("pairing.hint", { time: clockTime(expires) })}</p>
           <div className="pairing__actions">
             <Button variant="ghost" size="sm" onClick={onClose}>
-              Fermer
+              {t("common.close")}
             </Button>
           </div>
         </>

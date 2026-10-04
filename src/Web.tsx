@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader } from "./components/Loader";
 import { Button, Input, Key, Switch } from "./ds";
 import { api, ok } from "./lib/api";
@@ -9,28 +10,23 @@ type SiteRule = { id: string; type: "app" | "site"; target: string };
 type Youtube = "off" | "moderate" | "strict";
 type FilterSettings = { safeSearch: boolean; youtube: Youtube };
 
-const YOUTUBE: { value: Youtube; label: string }[] = [
-  { value: "off", label: "Normal" },
-  { value: "moderate", label: "Restreint" },
-  { value: "strict", label: "Restreint strict" },
-];
+const YOUTUBE: Youtube[] = ["off", "moderate", "strict"];
 
 // Blocked sites and content filters: both act in the same browsers, so they share
 // a section and a single note about which browsers that is.
 export default function Web({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation();
   return (
     <section className="block" aria-labelledby="web-title">
       <h2 id="web-title" className="block__title block__title--alone">
-        Sites et recherche
+        {t("web.title")}
       </h2>
       <div className="web">
         <Sites deviceId={deviceId} />
         <Filters deviceId={deviceId} />
       </div>
       <p className="footnote web__note">
-        Sites et filtres s'appliquent dans Edge, Chrome, Brave et Vivaldi. Les navigateurs qui ne le permettent pas (Firefox,
-        Opera, Tor Browser…) sont bloqués tant qu'un site ou un filtre est actif. Une règle posée sur un navigateur dans
-        Applications passe avant.
+        {t("web.note")}
       </p>
     </section>
   );
@@ -39,6 +35,7 @@ export default function Web({ deviceId }: { deviceId: string }) {
 // The API cleans what the parent types ("https://www.youtube.com/…" → "youtube.com/…");
 // a site blocks its subdomains too.
 function Sites({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation();
   const [sites, setSites] = useState<SiteRule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,25 +79,25 @@ function Sites({ deviceId }: { deviceId: string }) {
     <div className="web__col">
       <div>
         <h3 className="web__title">
-          Sites bloqués {sites && sites.length > 0 && <span className="web__count">{sites.length}</span>}
+          {t("web.sitesTitle")} {sites && sites.length > 0 && <span className="web__count">{sites.length}</span>}
         </h3>
-        <p className="web__lede">Le site et toutes ses pages sont inaccessibles, sous-domaines compris.</p>
+        <p className="web__lede">{t("web.sitesLede")}</p>
       </div>
       <form className="control__inline" onSubmit={onAdd}>
-        <Input name="target" placeholder="youtube.com" aria-label="Site à bloquer" required error={error ?? undefined} />
-        <Button type="submit">Bloquer</Button>
+        <Input name="target" placeholder="youtube.com" aria-label={t("web.siteAria")} required error={error ?? undefined} />
+        <Button type="submit">{t("web.block")}</Button>
       </form>
       {sites === null ? (
         !error && <Loader />
       ) : sites.length === 0 ? (
-        <p className="empty-line">Aucun site bloqué.</p>
+        <p className="empty-line">{t("web.noSites")}</p>
       ) : (
         <ul className="sites">
           {sites.map((site) => (
             <li key={site.id} className="sites__row">
               <span className="sites__host">{site.target}</span>
               <Button variant="ghost" size="sm" onClick={() => remove(site)}>
-                Débloquer
+                {t("web.unblock")}
               </Button>
             </li>
           ))}
@@ -112,6 +109,7 @@ function Sites({ deviceId }: { deviceId: string }) {
 
 // Forced in the child's browsers, without a way to turn them off there.
 function Filters({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation();
   const [filters, setFilters] = useState<FilterSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,8 +135,8 @@ function Filters({ deviceId }: { deviceId: string }) {
   return (
     <div className="web__col">
       <div>
-        <h3 className="web__title">Filtres</h3>
-        <p className="web__lede">Imposés dans le navigateur : l'enfant ne peut pas les désactiver.</p>
+        <h3 className="web__title">{t("web.filtersTitle")}</h3>
+        <p className="web__lede">{t("web.filtersLede")}</p>
       </div>
       {filters === null ? (
         error ? <p className="form-error">{error}</p> : <Loader />
@@ -147,22 +145,19 @@ function Filters({ deviceId }: { deviceId: string }) {
           <div className="filters__row">
             <div>
               <p className="filters__name">
-                Recherche sécurisée
+                {t("web.safeSearch")}
               </p>
-              <p className="filters__text">
-                Google et Bing masquent les résultats et images pour adultes. Les moteurs où ce filtre ne peut pas être
-                imposé (DuckDuckGo, Brave Search, Qwant, Ecosia…) sont bloqués.
-              </p>
+              <p className="filters__text">{t("web.safeSearchText")}</p>
             </div>
-            <Switch checked={filters.safeSearch} onChange={(safeSearch) => save({ ...filters, safeSearch })} aria-label="Recherche sécurisée" />
+            <Switch checked={filters.safeSearch} onChange={(safeSearch) => save({ ...filters, safeSearch })} aria-label={t("web.safeSearch")} />
           </div>
           <div className="filters__row filters__row--stack">
             <div>
-              <p className="filters__name">YouTube</p>
-              <p className="filters__text">Le mode restreint masque les vidéos signalées pour adultes ; le strict en masque davantage.</p>
+              <p className="filters__name">{t("web.youtube")}</p>
+              <p className="filters__text">{t("web.youtubeText")}</p>
             </div>
-            <div className="filters__keys" role="radiogroup" aria-label="Mode YouTube">
-              {YOUTUBE.map(({ value, label }) => (
+            <div className="filters__keys" role="radiogroup" aria-label={t("web.youtubeAria")}>
+              {YOUTUBE.map((value) => (
                 <Key
                   key={value}
                   tone={filters.youtube === value ? "violet" : "cream"}
@@ -173,7 +168,7 @@ function Filters({ deviceId }: { deviceId: string }) {
                   role="radio"
                   aria-checked={filters.youtube === value}
                 >
-                  {label}
+                  {t(`web.youtubeModes.${value}`)}
                 </Key>
               ))}
             </div>
